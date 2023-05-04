@@ -1,0 +1,7 @@
+*.pyc
+__pycache__
+*.egg-info
+
+venv
+
+notebooks/00_experiments.ipynb
