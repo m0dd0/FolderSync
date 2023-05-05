@@ -4,4 +4,7 @@ __pycache__
 
 venv
 
+tests/test_data/semester_10/*
+tests/test_data/semester_10_copy/*
+
 # notebooks/00_experiments.ipynb
