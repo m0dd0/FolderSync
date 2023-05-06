@@ -27,56 +27,58 @@ class FileHasher(abc.ABC):
         raise NotImplementedError
 
 
-class ModificationStampHasher(FileHasher):
+class MetadataHasher(FileHasher):
     def __init__(self) -> None:
-        """Hash files based on their modification stamp and file name."""
+        """Hash files based on their modification stamp and file name and size."""
         # self.base_path = base_path
         pass
 
     def __call__(self, file_path: Path) -> str:
         # rel_path = file_path.relative_to(self.base_path)
         # return f"{rel_path}_{os.path.getmtime(file_path)}"
-        return f"{file_path.name}_{os.path.getmtime(file_path)}"
+        return f"{file_path.name}_{os.path.getmtime(file_path)}_{os.path.getsize(file_path)}"
 
 
-class MetadataHasher(FileHasher):
-    def __init__(
-        self,
-        hash_func: Callable = hashlib.md5,
-        attributes: Tuple[str] = (
-            "st_mode",
-            "st_ino",
-            "st_dev",
-            "st_nlink",
-            "st_uid",
-            "st_gid",
-            "st_size",
-            "st_atime",
-            "st_mtime",
-            "st_ctime",
-            "st_atime_ns",
-            "st_mtime_ns",
-            "st_ctime_ns",
-        ),
-    ) -> None:
-        """Hash files based on their metadata. This especially accounts for the modification time
-        and the file id.
+# NOTE: this hashing method is not usable as the metadata is changed when copying the file (only the modification time is kept)
+# as a result the hash for the files in the target will always be different from the hash in the source
+# class MetadataHasher(FileHasher):
+#     def __init__(
+#         self,
+#         hash_func: Callable = hashlib.md5,
+#         attributes: Tuple[str] = (
+#             "st_mode",
+#             "st_ino",
+#             "st_dev",
+#             "st_nlink",
+#             "st_uid",
+#             "st_gid",
+#             "st_size",
+#             "st_atime",
+#             "st_mtime",
+#             "st_ctime",
+#             "st_atime_ns",
+#             "st_mtime_ns",
+#             "st_ctime_ns",
+#         ),
+#     ) -> None:
+#         """Hash files based on their metadata. This especially accounts for the modification time
+#         and the file id.
 
-        Args:
-            hash_func (Callable, optional): The hash function to apply on the metadata. Defaults to hashlib.md5.
-            attributes (Tuple[str], optional): The attributes to use for the hash. Defaults to all available attributes.
-        """
-        self.hash_func = hash_func
-        self.attributes = attributes
+#         Args:
+#             hash_func (Callable, optional): The hash function to apply on the metadata. Defaults to hashlib.md5.
+#             attributes (Tuple[str], optional): The attributes to use for the hash. Defaults to all available attributes.
+#         """
+#         self.hash_func = hash_func
+#         self.attributes = attributes
 
-    def __call__(self, file_path: Path) -> str:
-        str_repr = ""
-        for attr in self.attributes:
-            str_repr += str(getattr(file_path.stat(), attr, ""))
+#     def __call__(self, file_path: Path) -> str:
+#         str_repr = ""
+#         for attr in self.attributes:
+#             str_repr += str(getattr(file_path.stat(), attr, ""))
 
-        metadata_hash = self.hash_func(str_repr.encode()).hexdigest()
+#         metadata_hash = self.hash_func(str_repr.encode()).hexdigest()
 
-        return metadata_hash
+#         return metadata_hash
 
 
 class ContentHasher(FileHasher):
@@ -243,6 +245,9 @@ class Syncer:
 
         return result
 
+    def _sync_folders(self):
+        # TODO
+
     def _sync_by_path(
         self,
         source_path_hash_mapping: Dict[Path, str],
@@ -268,14 +273,22 @@ class Syncer:
         logging.info("Deleting files in target that are not in source...")
         for rel_path, hash in tqdm(target_path_hash_mapping.items()):
             if rel_path not in source_path_hash_mapping.keys():
-                (self.target_folder / rel_path).unlink()
+                try:
+                    (self.target_folder / rel_path).unlink()
+                except OSError:
+                    logging.warning(f"Could not delete {self.target_folder / rel_path}")
                 statistics["removed"] += 1
 
         logging.info("Copying files from source to target...")
         for rel_path, hash in tqdm(source_path_hash_mapping.items()):
             if rel_path in target_path_hash_mapping.keys():
                 if hash != target_path_hash_mapping[rel_path]:
-                    (self.target_folder / rel_path).unlink()
+                    try:
+                        (self.target_folder / rel_path).unlink()
+                    except OSError:
+                        logging.warning(
+                            f"Could not delete {self.target_folder / rel_path}"
+                        )
                     shutil.copy2(
                         self.source_folder / rel_path,
                         (self.target_folder / rel_path).parent,
@@ -384,7 +397,7 @@ class Syncer:
         for key, value in statistics.items():
             logging.info(f"{key}: {value}")
 
-    def __call__(self) -> None:
+    def run(self) -> None:
         """Executes all steps of the sync process and logs the progress."""
         logging.info(f"Syncing {self.source_folder} to {self.target_folder}")
 
