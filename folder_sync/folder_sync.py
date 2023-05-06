@@ -1,179 +1,161 @@
 from pathlib import Path
-from typing import Dict, List, Set, Callable
+from typing import List, Callable
 import hashlib
-from fnmatch import fnmatch
 import logging
-from concurrent.futures import ThreadPoolExecutor
+import concurrent
 import os
-import abc
 import shutil
 from collections import defaultdict
+import time
 
 from tqdm import tqdm
 
 
-class FileHasher(abc.ABC):
-    @abc.abstractmethod
-    def __call__(self, file_path: Path) -> str:
-        """Abstract method for defining function which calculate some kind of hash
-        for the whole file.
+def metadata_hash(file_path: Path) -> str:
+    """Hash files based on their modification stamp and file name and size.
 
-        Args:
-            file_path (Path): The path to the file for which the hash should be generated.
+    Args:
+        file_path: path to the file
 
-        Returns:
-            str: The hash for the file.
-        """
-        raise NotImplementedError
-
-
-class MetadataHasher(FileHasher):
-    def __init__(self) -> None:
-        """Hash files based on their modification stamp and file name and size."""
-        pass
-
-    def __call__(self, file_path: Path) -> str:
-        return f"{file_path.name}_{os.path.getmtime(file_path)}_{os.path.getsize(file_path)}"
+    Returns:
+        "hash" of the file metadata
+    """
+    # NOTE: it makes no sense to hash on all attributes of path.stat() as the inode number and pther fields are not preserved when copying the file
+    return (
+        f"{file_path.name}_{os.path.getmtime(file_path)}_{os.path.getsize(file_path)}"
+    )
 
 
-class ContentHasher(FileHasher):
-    def __init__(
-        self, hash_func: Callable = hashlib.md5, block_size: int = 65536
-    ) -> None:
-        """Hash files based on their content.
+def content_hash(
+    file_path: Path, hash_func: Callable = hashlib.md5, block_size: int = 65536
+) -> str:
+    """Return the md5 hash of a file considering its content only.
 
-        Args:
-            hash_func (Callable, optional): The hash function to use. Defaults to hashlib.md5.
-            block_size (int, optional): The block size to use when reading the file. Defaults to 65536.
-        """
-        self.block_size = block_size
-        self.hash_func = hash_func
+    Args:
+        file_path: path to the file
+        hash_func: hash function to use, default is md5
+        block_size: size of the block to read from the file at once, default is 65536
 
-    def __call__(self, file_path: Path) -> str:
-        """Return the md5 hash of a file."""
-        hasher = self.hash_func()
+    Returns:
+        md5 hash of the file content
+    """
+    hasher = hash_func()
 
-        with open(file_path, "rb") as file:
-            while True:
-                data = file.read(self.block_size)
-                if not data:
-                    break
-                hasher.update(data)
+    with open(file_path, "rb") as file:
+        while True:
+            data = file.read(block_size)
+            if not data:
+                break
+            hasher.update(data)
 
-        content_hash = hasher.hexdigest()
+    content_hash = hasher.hexdigest()
 
-        return content_hash
+    return content_hash
 
 
-class Syncer:
-    def __init__(
-        self,
-        source_folder: Path,
-        target_folder: Path,
-        file_hasher: FileHasher = None,
-        # n_threads: int = 1,
-    ) -> None:
-        """Sync two folders. The folder are synced so that the target folder
-        is a exact copy of the source folder. Only files which are different
-        are copied.
+def _delete_outdated_element(target_path: Path):
+    if target_path.is_file():
+        target_path.unlink()
+        return "deleted_file"
+    elif target_path.is_dir():
+        shutil.rmtree(target_path)
+        return "deleted_folder"
 
-        Args:
-            source_folder (Path): The source folder.
-            target_folder (Path): The target folder.
-            file_hasher (FileHasher, optional): The file hasher to use. Defaults to a MetadataHasher with md5 as hash function.
-            n_threads (int, optional): The number of threads to use for calculating the hashes and filtering the files.
-                Defaults to 1.
-        """
-        self.source_folder = source_folder
-        self.target_dir = target_folder
-        self.file_hasher = file_hasher or MetadataHasher()
-        self.stats = defaultdict(int)
-        # self.n_threads = n_threads
 
-    def _sync_dir(self, source_dir: Path, target_dir: Path):
-        target_names = [p.name for p in target_dir.iterdir()]
-        source_names = [p.name for p in source_dir.iterdir()]
+def _copy_new_element(source_path: Path, target_path: Path):
+    if source_path.is_file():
+        shutil.copy2(source_path, target_path)
+        return "copied_file"
+    elif source_path.is_dir():
+        # TODO do own recursion for better tracking of progress, !!! accoutn for empty folders
+        shutil.copytree(source_path, target_path)
+        return "copied_folder"
 
-        def change_file(source_path, target_path):
-            source_path.unlink()
-            shutil.copy2(source_path, target_path.parent)
 
-        # delete files and folders which are in tagret but not in source anymore
-        for name in target_names:
-            if name not in source_names:
-                target_path = target_dir / name
-                if target_path.is_file():
-                    target_path.unlink()
-                    self.stats["deleted_files"] += 1
-                elif target_path.is_dir():
-                    shutil.rmtree(target_path)
-                    self.stats["deleted_folders"] += 1
+def _update_existing_file(
+    source_path: Path, target_path: Path, file_hash_func: Callable
+):
+    if file_hash_func(source_path) == file_hash_func(target_path):
+        return "unchanged_file"
+    target_path.unlink()
+    shutil.copy2(source_path, target_path.parent)
+    return "changed_file"
 
-        # copy files and folders which are in source but not in target
-        for name in source_names:
-            source_path = source_dir / name
+
+def _sync_dir(
+    source_dir: Path,
+    target_dir: Path,
+    file_hash_func: Callable,
+    executer: concurrent.futures.ThreadPoolExecutor,
+    futures: List,
+):
+    target_names = [p.name for p in target_dir.iterdir()]
+    source_names = [p.name for p in source_dir.iterdir()]
+
+    # delete files and folders which are in tagret but not in source anymore
+    for name in target_names:
+        if name not in source_names:
             target_path = target_dir / name
+            futures.append(executer.submit(_delete_outdated_element, target_path))
 
-            if name not in target_names:
-                if source_path.is_file():
-                    # shutil.copy2(source_path, target_path)
-                    self.executer.submit(shutil.copy2, source_path, target_path)
-                    self.stats["copied_files"] += 1
-                elif source_path.is_dir():
-                    # shutil.copytree(source_path, target_path)
-                    self.executer.submit(shutil.copytree, source_path, target_path)
-                    self.stats["copied_folders"] += 1
+    # copy files and folders which are in source but not in target
+    for name in source_names:
+        source_path = source_dir / name
+        target_path = target_dir / name
 
-            else:  # name exists in source and target
-                if source_path.is_file():
-                    if self.file_hasher(source_path) != self.file_hasher(target_path):
-                        # target_path.unlink()
-                        # shutil.copy2(source_path, target_path.parent)
-                        self.executer.submit(change_file, source_path, target_path)
-                        self.stats["changed_files"] += 1
-                    else:
-                        self.stats["unchanged_files"] += 1
-                elif source_path.is_dir():
-                    self._sync_dir(source_path, target_path)
+        if name not in target_names:
+            futures.append(executer.submit(_copy_new_element, source_path, target_path))
+
+        else:  # name exists in source and target
+            if source_path.is_file():
+                futures.append(
+                    executer.submit(
+                        _update_existing_file, source_path, target_path, file_hash_func
+                    )
+                )
+            elif source_path.is_dir():
+                _sync_dir(source_path, target_path, file_hash_func, executer, futures)
 
 
-# NOTE: this hashing method is not usable as the metadata is changed when copying the file (only the modification time is kept)
-# as a result the hash for the files in the target will always be different from the hash in the source
-# class MetadataHasher(FileHasher):
-#     def __init__(
-#         self,
-#         hash_func: Callable = hashlib.md5,
-#         attributes: Tuple[str] = (
-#             "st_mode",
-#             "st_ino",
-#             "st_dev",
-#             "st_nlink",
-#             "st_uid",
-#             "st_gid",
-#             "st_size",
-#             "st_atime",
-#             "st_mtime",
-#             "st_ctime",
-#             "st_atime_ns",
-#             "st_mtime_ns",
-#             "st_ctime_ns",
-#         ),
-#     ) -> None:
-#         """Hash files based on their metadata. This especially accounts for the modification time
-#         and the file id.
+def sync_folders(
+    source_folder: Path,
+    target_folder: Path,
+    n_thredas: int = 1,
+    hash_func: Callable = metadata_hash,
+):
+    """Sync two folders recursively.
+    All files and folders which are in target but not in source anymore are deleted.
+    All files and folders which are in source but not in target are copied.
+    All files which are in both source and target are updated if their hash is different.
 
-#         Args:
-#             hash_func (Callable, optional): The hash function to apply on the metadata. Defaults to hashlib.md5.
-#             attributes (Tuple[str], optional): The attributes to use for the hash. Defaults to all available attributes.
-#         """
-#         self.hash_func = hash_func
-#         self.attributes = attributes
+    Args:
+        source_folder: path to the source folder
+        target_folder: path to the target folder
+        n_thredas: number of threads to use, default is 1
+        hash_func: function to use to hash files, default is metadata_hash
+    """
+    logging.info(f"Syncing {source_folder} to {target_folder}")
 
-#     def __call__(self, file_path: Path) -> str:
-#         str_repr = ""
-#         for attr in self.attributes:
-#             str_repr += str(getattr(file_path.stat(), attr, ""))
+    start_time = time.time()
+    stats = defaultdict(int)
 
-#         metadata_hash = self.hash_func(str_repr.encode()).hexdigest()
+    executer = concurrent.futures.ThreadPoolExecutor(max_workers=n_thredas)
+    futures = []
 
-#         return metadata_hash
+    logging.info("Detecting changes...")
+    _sync_dir(source_folder, target_folder, hash_func, executer, futures)
+
+    logging.info("Applying changes...")
+    with tqdm(total=len(futures)) as pbar:
+        for future in concurrent.futures.as_completed(futures):
+            pbar.update(1)
+            result = future.result()
+            stats[result] += 1
+
+    executer.shutdown(wait=True)  # should be shutdown already but just to be sure
+
+    logging.info(
+        f"Finished syncing {source_folder} to {target_folder} in {time.time() - start_time:.2f} seconds"
+    )
+    for key, value in stats.items():
+        logging.info(f"{key}: {value}")
