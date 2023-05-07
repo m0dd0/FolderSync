@@ -8,6 +8,12 @@ from folder_sync import sync_folders
 
 
 TEST_DATA = Path(__file__).parent / "test_data"
+TEST_FOLDERS = [p.name for p in TEST_DATA.iterdir() if p.is_dir()]
+ALL_FOLDER_COMBINATIONS = [
+    (source_folder, target_folder)
+    for source_folder in TEST_FOLDERS
+    for target_folder in TEST_FOLDERS
+]
 
 
 def assert_subset_folder(superset_folder, subset_folder):
@@ -46,18 +52,16 @@ def target_folder(request, tmp_path):
 
 @pytest.mark.parametrize(
     "source_folders, target_folder",
-    [
-        ("basic", "empty"),
-        ("empty", "basic"),
-        ("basic", "basic"),
-        ("empty", "empty"),
-        ("basic", "trimmed"),
-        ("trimmed", "basic"),
-        ("basic", "more_empty_folders"),
-        ("more_empty_folders", "basic"),
-        ("less_empty_folders", "basic"),
-        ("basic", "less_empty_folders"),
-    ],
+    ALL_FOLDER_COMBINATIONS,
+    # [
+    # ("basic", "empty"),
+    # ("basic", "trimmed"),
+    # ("basic", "basic"),
+    # ("basic", "less_empty_folders"),
+    # ("basic", "more_empty_folders"),
+    # ("basic", "renamed_file2folder"),
+    # ("basic", "changed_data"),
+    # ],
     indirect=["source_folders", "target_folder"],
 )
 def test_sync(source_folders, target_folder):
@@ -77,10 +81,10 @@ def test_sync(source_folders, target_folder):
     assert_subset_folder(control_source_folder, source_folder)
     assert_subset_folder(source_folder, control_source_folder)
 
-    print("Control Source")
-    seedir.seedir(control_source_folder, style="emoji")
-    print("Source")
-    seedir.seedir(source_folder, style="emoji")
-    print("Target")
-    seedir.seedir(target_folder, style="emoji")
+    # print("Control Source")
+    # seedir.seedir(control_source_folder, style="emoji")
+    # print("Source")
+    # seedir.seedir(source_folder, style="emoji")
+    # print("Target")
+    # seedir.seedir(target_folder, style="emoji")
     # assert False
