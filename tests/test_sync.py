@@ -53,6 +53,10 @@ def target_folder(request, tmp_path):
         ("empty", "empty"),
         ("basic", "trimmed"),
         ("trimmed", "basic"),
+        ("basic", "more_empty_folders"),
+        ("more_empty_folders", "basic"),
+        ("less_empty_folders", "basic"),
+        ("basic", "less_empty_folders"),
     ],
     indirect=["source_folders", "target_folder"],
 )
