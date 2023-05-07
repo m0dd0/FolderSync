@@ -49,6 +49,10 @@ def target_folder(request, tmp_path):
     [
         ("basic", "empty"),
         ("empty", "basic"),
+        ("basic", "basic"),
+        ("empty", "empty"),
+        ("basic", "trimmed"),
+        ("trimmed", "basic"),
     ],
     indirect=["source_folders", "target_folder"],
 )
@@ -69,6 +73,10 @@ def test_sync(source_folders, target_folder):
     assert_subset_folder(control_source_folder, source_folder)
     assert_subset_folder(source_folder, control_source_folder)
 
-    # print("Source")
-    # seedir.seedir(source_folder, style="emoji")
+    print("Control Source")
+    seedir.seedir(control_source_folder, style="emoji")
+    print("Source")
+    seedir.seedir(source_folder, style="emoji")
+    print("Target")
+    seedir.seedir(target_folder, style="emoji")
     # assert False
