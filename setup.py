@@ -16,7 +16,7 @@ setuptools.setup(
     # of a package in order to solve dependencies
     # therfore it might be useful to fix the versions someday
     install_requires=["tqdm"],
-    extras_require={"dev": ["black", "pylint", "jupyter"]},
+    extras_require={"dev": ["black", "pylint", "jupyter", "pytest", "seedir", "emoji"]},
     include_package_data=True,
     use_scm_version=True,
 )

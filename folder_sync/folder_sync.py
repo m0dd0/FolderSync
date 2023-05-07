@@ -2,7 +2,7 @@ from pathlib import Path
 from typing import List, Callable
 import hashlib
 import logging
-import concurrent
+import concurrent.futures
 import os
 import shutil
 from collections import defaultdict
