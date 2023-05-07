@@ -93,10 +93,21 @@ def _sync_dir(
     source_names = [p.name for p in source_dir.iterdir()]
 
     # delete files and folders which are in tagret but not in source anymore
+    # we need to update the target_names list as otherwise we iterate over invalid elements in the next loop
+    kept_target_names = []
     for name in target_names:
-        if name not in source_names:
-            target_path = target_dir / name
+        source_path = source_dir / name
+        target_path = target_dir / name
+        if name not in source_names or not (
+            source_path.is_file() == target_path.is_file()
+            and source_path.is_dir() == target_path.is_dir()
+            and source_path.exists() == target_path.exists()
+        ):
             futures.append(executer.submit(_delete_outdated_element, target_path))
+        else:
+            kept_target_names.append(name)
+
+    target_names = kept_target_names
 
     # copy files and folders which are in source but not in target
     for name in source_names:
@@ -106,7 +117,7 @@ def _sync_dir(
         if name not in target_names:
             futures.append(executer.submit(_copy_new_element, source_path, target_path))
 
-        else:  # name exists in source and target
+        else:  # name exists in source and target and is of same type (file or folder)
             if source_path.is_file():
                 futures.append(
                     executer.submit(
