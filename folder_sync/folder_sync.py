@@ -13,103 +13,68 @@ import enum
 from tqdm import tqdm
 
 
+# we can associate exactly one change to each relative path
+class Change(enum.Enum):
+    NEW_FILE = enum.auto()
+    NEW_FOLDER = enum.auto()
+    CHANGED_FILE = enum.auto()
+    CHANGED_FILE2FOLDER = enum.auto()
+    CHANGED_FOLDER2FILE = enum.auto()
+    UNCHANGED_FILE = enum.auto()
+    REMOVED_FILE = enum.auto()
+    REMOVED_FOLDER = enum.auto()
+    INVALID_TYPE = enum.auto()
+    UNCHANGED_FOLDER = enum.auto()
+
+
+# multiple actions can be associated to each relative path (e.g. first delete a file, then create a folder with the same name)
 class Action(enum.Enum):
-    COPY_FILE = "copy_file"
-    DELETE_FILE = "delete_file"
-    DELETE_EMPTY_FOLDER = "delete_folder"
-    CREATE_EMPTY_FOLDER = "create_folder"
-    COMPARE_FILE = "compare_file"
+    COPY_FILE = enum.auto()
+    DELETE_FILE = enum.auto()
+    CREATE_FOLDER = enum.auto()
+    DELETE_FOLDER = enum.auto()
 
 
-class Stat(enum.Enum):
-    DELETED_FOLDERS = "deleted_folders"
-    DELETED_FILES = "deleted_files"
-    COPIED_FOLDERS = "copied_folders"
-    COPIED_FILES = "copied_files"
-    COMPARED_FILES = "compared_files"
-    CHANGED_FILES = "changed_files"
-    UNCHANGED_FILES = "unchanged_files"
-
-
-def _get_delete_folder_actions(
-    folder_path: Path, actions: Dict[Action, List[Any]], stats: Dict[Stat, List[Any]]
+def _determine_change(
+    rel_path: Path,
+    source_folder: Path,
+    target_folder: Path,
+    shallow_comparison: bool,
+    in_source: bool,
+    in_target: bool,
 ):
-    for p in folder_path.iterdir():
-        if p.is_dir():
-            _get_delete_folder_actions(p)
-        elif p.is_file():
-            actions[Action.DELETE_FILE].append(p)
-            stats[Stat.DELETED_FILES].append(p)
-
-    actions[Action.DELETE_EMPTY_FOLDER].append(folder_path)
-
-
-def _get_copy_folder_actions(
-    source_path,
-    target_path,
-    actions: Dict[Action, List[Any]],
-    stats: Dict[Stat, List[Any]],
-):
-    actions[Action.CREATE_EMPTY_FOLDER].append(target_path)
-
-    for p in source_path.iterdir():
-        if p.is_dir():
-            _get_copy_folder_actions(p, target_path / p.name, actions)
-        elif p.is_file():
-            actions[Action.COPY_FILE].append((p, target_path / p.name))
-            stats[Stat.COPIED_FILES].append((p, target_path / p.name))
-
-
-def _get_actions(
-    source_dir: Path,
-    target_dir: Path,
-    actions: Dict[Action, List[Any]],
-    stats: Dict[Stat, List[Any]],
-):
-    target_names = [p.name for p in target_dir.iterdir()]
-    source_names = [p.name for p in source_dir.iterdir()]
-
-    # delete files and folders which are in tagret but not in source anymore
-    # we need to update the target_names list as otherwise we iterate over invalid elements in the next loop
-    kept_target_names = []
-    for name in target_names:
-        source_path = source_dir / name
-        target_path = target_dir / name
-        if name not in source_names or not (
-            source_path.is_file() == target_path.is_file()
-            and source_path.is_dir() == target_path.is_dir()
-            and source_path.exists() == target_path.exists()
-        ):
-            if target_path.is_file():
-                stats[Stat.DELETED_FILES].append(target_path)
-                actions[Action.DELETE_FILE].append(target_path)
-            elif target_path.is_dir():
-                stats[Stat.DELETED_FOLDERS].append(target_path)
-                _get_delete_folder_actions(target_path, actions)
+    if not in_source and in_target:
+        if target_folder / rel_path.is_file():
+            return Change.REMOVED_FILE
+        elif target_folder / rel_path.is_dir():
+            return Change.REMOVED_FOLDER
         else:
-            kept_target_names.append(name)
+            return Change.INVALID_TYPE
 
-    target_names = kept_target_names
+    if in_source and not in_target:
+        if source_folder / rel_path.is_file():
+            return Change.NEW_FILE
+        elif source_folder / rel_path.is_dir():
+            return Change.NEW_FOLDER
+        else:
+            return Change.INVALID_TYPE
 
-    # copy files and folders which are in source but not in target
-    for name in source_names:
-        source_path = source_dir / name
-        target_path = target_dir / name
-
-        if name not in target_names:
-            if source_path.is_file():
-                actions[Action.COPY_FILE].append((source_path, target_path))
-                stats[Stat.COPIED_FILES].append((source_path, target_path))
-            elif source_path.is_dir():
-                stats[Stat.COPIED_FOLDERS].append((source_path, target_path))
-                _get_copy_folder_actions(source_path, target_path, actions)
-
-        else:  # name exists in source and target and is of same type (file or folder)
-            if source_path.is_file():
-                stats[Stat.COMPARED_FILES].append((source_path, target_path))
-                actions[Action.COMPARE_FILE].append((source_path, target_path))
-            elif source_path.is_dir():
-                _get_actions(source_path, target_path, actions)
+    if in_source and in_target:
+        if source_folder / rel_path.is_file() and target_folder / rel_path.is_file():
+            if filecmp(
+                source_folder / rel_path, target_folder / rel_path, shallow_comparison
+            ):
+                return Change.UNCHANGED_FILE
+            else:
+                return Change.CHANGED_FILE
+        elif source_folder / rel_path.is_file() and target_folder / rel_path.is_dir():
+            return Change.CHANGED_FILE2FOLDER
+        elif source_folder / rel_path.is_dir() and target_folder / rel_path.is_file():
+            return Change.CHANGED_FOLDER2FILE
+        elif source_folder / rel_path.is_dir() and target_folder / rel_path.is_dir():
+            return Change.UNCHANGED_FOLDER
+        else:
+            return Change.INVALID_TYPE
 
 
 def _run_executer_with_progress(n_threads, func, data: List[Tuple]):
@@ -125,137 +90,125 @@ def _run_executer_with_progress(n_threads, func, data: List[Tuple]):
     return [f.result() for f in futures]
 
 
+def _infer_actions(all_paths, all_changes):
+    actions = {e: [] for e in Action}
+    for change_type, path in zip(all_changes, all_paths):
+        if change_type == Change.REMOVED_FILE:
+            actions[Action.DELETE_FILE].append(path)
+        elif change_type == Change.REMOVED_FOLDER:
+            actions[Action.DELETE_FOLDER].append(path)
+        elif change_type == Change.NEW_FILE:
+            actions[Action.COPY_FILE].append(path)
+        elif change_type == Change.NEW_FOLDER:
+            actions[Action.CREATE_FOLDER].append(path)
+        elif change_type == Change.CHANGED_FILE:
+            actions[Action.DELETE_FILE].append(path)
+            actions[Action.COPY_FILE].append(path)
+        elif change_type == Change.CHANGED_FILE2FOLDER:
+            actions[Action.DELETE_FILE].append(path)
+            actions[Action.CREATE_FOLDER].append(path)
+        elif change_type == Change.CHANGED_FOLDER2FILE:
+            actions[Action.DELETE_FOLDER].append(path)
+            actions[Action.COPY_FILE].append(path)
+
+    return actions
+
+
 def sync_folders(
     source_folder: Path,
     target_folder: Path,
     n_thredas: int = 1,
     shallow_comparison: bool = True,
-    verbose: bool = False,
+    verbose_logging: bool = False,
 ):
-    """Sync two folders recursively.
-    All files and folders which are in target but not in source anymore are deleted.
-    All files and folders which are in source but not in target are copied.
-    All files which are in both source and target are updated if their hash is different.
-
-    Args:
-        source_folder: path to the source folder
-        target_folder: path to the target folder
-        n_thredas: number of threads to use, default is 1
-    """
     logging.info(f"Syncing {source_folder} to {target_folder}")
-
     start_time = time.time()
 
-    logging.info("Detecting necessary actions...")
-    actions = defaultdict(list)
-    stats = defaultdict(list)
-    _get_actions(source_folder, target_folder, actions, stats)
+    logging.info("Detecting paths...")
+    source_paths = {p.relative_to(source_folder) for p in source_folder.rglob("*")}
+    target_paths = {p.relative_to(target_folder) for p in target_folder.rglob("*")}
+    # use list to have defined order
+    all_paths = list(source_paths | target_paths)
 
-    logging.info("Comparing files...")
-    results = _run_executer_with_progress
-    (
+    logging.info("Determining changes...")
+    change_results = _run_executer_with_progress(
         n_thredas,
-        filecmp.cmp,
-        actions[Action.COMPARE_FILE],
-        shallow_comparison,
+        _determine_change,
+        [
+            (
+                rel_path,
+                source_folder,
+                target_folder,
+                shallow_comparison,
+                rel_path in source_paths,
+                rel_path in target_paths,
+            )
+            for rel_path in all_paths
+        ],
     )
-    # executer = concurrent.futures.ThreadPoolExecutor(max_workers=n_thredas)
-    # futures = [
-    #     executer.submit(filecmp.cmp, f1, f2, shallow_comparison)
-    #     for f1, f2 in actions[Action.COMPARE_FILE]
-    # ]
+    changes = {c: [] for c in Change}
+    for change_type, rel_path in zip(change_results, all_paths):
+        changes[change_type].append(rel_path)
 
-    # # logging progress
-    # with tqdm(total=len(futures)) as pbar:
-    #     for _ in concurrent.futures.as_completed(futures):
-    #         pbar.update(1)
+    # check for invalid types
+    if len(changes[Change.INVALID_TYPE]) > 0:
+        invalid_paths_str = "\n".join([str(p) for p in changes[Change.INVALID_TYPE]])
+        logging.warning(
+            f"The following elements were ignored because they are neither files nor folders. This can lead to unexpected behavior:\n{invalid_paths_str}"
+        )
+        logging.warning("Do you want to continue? (y/n)")
+        if input("y/n: ") != "y":
+            logging.info("Aborting...")
+            return
 
-    # update actions
-    for i, (source, target) in enumerate(actions.pop(Action.COMPARE_FILE)):
-        if not futures[i].result():
-            actions[Action.DELETE_FILE].append(target)
-            actions[Action.COPY_FILE].append((source, target))
-            stats[Stat.CHANGED_FILES].append((source, target))
-        else:
-            stats[Stat.UNCHANGED_FILES].append((source, target))
+    logging.info("Inferring actions...")
+    actions = _infer_actions(all_paths, change_results)
 
-    logging.info("The following actions will be executed:")
-    for action, args in actions.items():
-        logging.info(f"{action}: {args if verbose else len(args)}")
+    logging.info(f"{len(changes[Change.UNCHANGED_FILE])} are unchanged.")
+    logging.info("The following actions will be applied on the target folder:")
+    for action, paths in actions.items():
+        info_str = f"{action.name}: {len(paths)}"
+        if action in (Action.CREATE_FOLDER, Action.DELETE_FOLDER):
+            info_str += (
+                f" ({len([p for p in paths if p.parent not in paths])} top-level)"
+            )
+        logging.info(info_str)
+        if verbose_logging:
+            logging.info("\n".join([str(p) for p in paths]))
 
-    # Do you want to continue?
-    # TODO
+    logging.info("Do you want to continue? (y/n)")
+    if input("y/n: ") != "y":
+        logging.info("Aborting...")
+        return
 
-    logging.info("Executing actions...")
+    logging.info("Applying changes...")
     logging.info("Deleting files...")
-    executer = concurrent.futures.ThreadPoolExecutor(max_workers=n_thredas)
-    futures = [
-        executer.submit(lambda p: p.unlink(), p) for p in actions[Action.DELETE_FILE]
-    ]
-    with tqdm(total=len(futures)) as pbar:
-        for _ in concurrent.futures.as_completed(futures):
-            pbar.update(1)
-
-    # delete files from target
-    # delete empty folders from target
-    # create empty folders in target
-    # copy files to target
+    _run_executer_with_progress(
+        n_thredas,
+        lambda rel_path: (target_folder / rel_path).unlink(),
+        actions[Action.DELETE_FILE],
+    )
+    logging.info("Deleting (now empty) folders...")
+    _run_executer_with_progress(
+        n_thredas,
+        lambda rel_path: (target_folder / rel_path).rmdir(),
+        actions[Action.DELETE_FOLDER],
+    )
+    logging.info("Creating folders...")
+    _run_executer_with_progress(
+        n_thredas,
+        lambda rel_path: (target_folder / rel_path).mkdir(parents=True, exists_ok=True),
+        actions[Action.CREATE_FOLDER],
+    )
+    logging.info("Copying files...")
+    _run_executer_with_progress(
+        n_thredas,
+        lambda rel_path: shutil.copy2(
+            source_folder / rel_path, target_folder / rel_path
+        ),
+        actions[Action.COPY_FILE],
+    )
 
     logging.info(
         f"Finished syncing {source_folder} to {target_folder} in {time.time() - start_time:.2f} seconds"
     )
-
-
-# def _delete_outdated_element(target_path: Path):
-#     if target_path.is_file():
-#         target_path.unlink()
-#         return "deleted_file"
-#     elif target_path.is_dir():
-#         # TODO do own recursion for better tracking of progress, !!! accoutn for empty folders
-#         shutil.rmtree(target_path)
-#         return "deleted_folder"
-
-
-# def _copy_new_element(source_path: Path, target_path: Path):
-#     if source_path.is_file():
-#         shutil.copy2(source_path, target_path)
-#         return "copied_file"
-#     elif source_path.is_dir():
-#         # TODO do own recursion for better tracking of progress, !!! accoutn for empty folders
-#         shutil.copytree(source_path, target_path)
-#         return "copied_folder"
-
-
-# def _update_existing_file(
-#     source_path: Path, target_path: Path, file_hash_func: Callable
-# ):
-#     if file_hash_func(source_path) == file_hash_func(target_path):
-#         return "unchanged_file"
-#     target_path.unlink()
-#     shutil.copy2(source_path, target_path.parent)
-#     return "changed_file"
-
-
-# def aggregate_action_statistics(
-#     actions: List[Tuple[Callable, Any]]
-# ) -> Dict[str, List[Path]]:
-#     stats = {
-#         "deleted_folders": [],
-#         "deleted_files": [],
-#         "copied_folders": [],
-#         "copied_files": [],
-#         "updated_files": [],
-#     }
-#     for action, *args in actions:
-#         if action == _delete_outdated_element:
-#             p = args[0]
-#             if p.is_file():
-#                 stats["files_deleted"].append(args[0])
-#             elif p.is_dir():
-#                 stats["folders_deleted"].append(args[0].parent)
-#         elif action == _copy_new_element:
-#             stats["folders_copied"].append(args[1].parent)
-#         elif action == _update_existing_file:
-#             stats["files_updated"].append(args[1].parent)
-#         else:
-#             raise ValueError(f"Unknown action {action}")
