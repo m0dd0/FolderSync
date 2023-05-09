@@ -133,9 +133,9 @@ def _determine_change(
             else:
                 return Change.CHANGED_FILE
         elif source_path.is_file() and target_path.is_dir():
-            return Change.CHANGED_FILE2FOLDER
-        elif source_path.is_dir() and target_path.is_file():
             return Change.CHANGED_FOLDER2FILE
+        elif source_path.is_dir() and target_path.is_file():
+            return Change.CHANGED_FILE2FOLDER
         elif source_path.is_dir() and target_path.is_dir():
             return Change.UNCHANGED_FOLDER
         else:
