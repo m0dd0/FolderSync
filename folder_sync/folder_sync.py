@@ -1,11 +1,12 @@
 from pathlib import Path
-from typing import List, Tuple, Set, Callable, Any, Dict
+from typing import List, Tuple, Set, Callable, Any, Dict, Union
 import logging
 import concurrent.futures
 import shutil
 import time
 import filecmp
 import enum
+from collections import defaultdict
 
 from tqdm import tqdm
 
@@ -32,18 +33,33 @@ class Action(enum.Enum):
 
 
 def _run_executer_with_progress(
-    n_threads: int, func: Callable, data: List[Tuple]
-) -> List[Any]:
-    executer = concurrent.futures.ThreadPoolExecutor(max_workers=n_threads)
-    futures = [executer.submit(func, *d) for d in data]
+    n_threads: int,
+    func: Callable,
+    data: Union[List[Tuple], List[List[Tuple]]],
+    batched: bool = False,
+) -> List[List[Any]]:
+    if not batched:
+        data_batches = [data]
+    else:
+        data_batches = data
 
-    with tqdm(total=len(futures)) as pbar:
-        for _ in concurrent.futures.as_completed(futures):
-            pbar.update(1)
+    results = []
+    with tqdm(total=sum(len(d) for d in data_batches)) as pbar:
+        for data in data_batches:
+            executer = concurrent.futures.ThreadPoolExecutor(max_workers=n_threads)
+            futures = [executer.submit(func, *d) for d in data]
 
-    executer.shutdown(wait=True)
+            for _ in concurrent.futures.as_completed(futures):
+                pbar.update(1)
 
-    return [f.result() for f in futures]
+                executer.shutdown(wait=True)
+
+            results.append([f.result() for f in futures])
+
+    if not batched:
+        return results[0]
+
+    return results
 
 
 def _handle_invlid_types(
@@ -206,13 +222,15 @@ def _log_actions(
             exit()
 
 
-def _remove_dirs(dirs):
+def _get_paths_in_levelbatches(paths: Set[Path]) -> List[Set[Tuple[Path]]]:
     paths_by_depth = defaultdict(list)
-    for p in dirs:
+    for p in paths:
         paths_by_depth[len(p.parts)].append(p)
+    path_batches = []
+    for level in sorted(paths_by_depth.keys(), reverse=True):
+        path_batches.append([(p,) for p in paths_by_depth[level]])
 
-    for depth in sorted(parts_by_depth.keys()):
-        _run_executer_with_progress()
+    return path_batches
 
 
 def sync_folders(
@@ -266,15 +284,15 @@ def sync_folders(
     _run_executer_with_progress(
         n_threads,
         lambda rel_path: (target_folder / rel_path).unlink(),
-        [(a,) for a in actions[Action.DELETE_FILE]],
+        [(p,) for p in actions[Action.DELETE_FILE]],
     )
 
     logging.info("Deleting (now empty) folders...")
-    # FIXME folders can still contain other empty folders
     _run_executer_with_progress(
         n_threads,
         lambda rel_path: (target_folder / rel_path).rmdir(),
-        [(a,) for a in actions[Action.DELETE_FOLDER]],
+        _get_paths_in_levelbatches(actions[Action.DELETE_FOLDER]),
+        batched=True,
     )
 
     logging.info("Creating folders...")
