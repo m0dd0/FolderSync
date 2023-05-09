@@ -47,7 +47,7 @@ def _run_executer_with_progress(
 
 
 def _handle_invlid_types(
-    source_paths: Set[Path], target_paths: Set[Path]
+    source_paths: Set[Path], target_paths: Set[Path], ask: bool
 ) -> Tuple[Set[Path], Set[Path]]:
     invalid_source_paths = {
         p for p in source_paths if not p.is_file() and not p.is_dir()
@@ -69,9 +69,10 @@ def _handle_invlid_types(
         for p in invalid_target_paths:
             logging.warning(p)
         logging.warning("Do you want to continue?")
-        if input("y/n: ") != "y":
-            logging.info("Aborting...")
-            exit()
+        if ask:
+            if input("y/n: ") != "y":
+                logging.info("Aborting...")
+                exit()
         for p in invalid_target_paths:
             # try:
             p.unlink()
@@ -79,7 +80,7 @@ def _handle_invlid_types(
             #     logging.fatal(f"Couldnt delete {p}")
             #     raise e
 
-        return invalid_source_paths, invalid_target_paths
+    return invalid_source_paths, invalid_target_paths
 
 
 def _determine_change(
@@ -90,35 +91,36 @@ def _determine_change(
     in_source: bool,
     in_target: bool,
 ) -> Change:
+    source_path = source_folder / rel_path
+    target_path = target_folder / rel_path
+
     if not in_source and in_target:
-        if target_folder / rel_path.is_file():
+        if target_path.is_file():
             return Change.REMOVED_FILE
-        elif target_folder / rel_path.is_dir():
+        elif target_path.is_dir():
             return Change.REMOVED_FOLDER
         else:
             assert False, "There shouldnt be any paths which arent files or folder"
 
     if in_source and not in_target:
-        if source_folder / rel_path.is_file():
+        if source_path.is_file():
             return Change.NEW_FILE
-        elif source_folder / rel_path.is_dir():
+        elif source_path.is_dir():
             return Change.NEW_FOLDER
         else:
             assert False, "There shouldnt be any paths which arent files or folder"
 
     if in_source and in_target:
-        if source_folder / rel_path.is_file() and target_folder / rel_path.is_file():
-            if filecmp(
-                source_folder / rel_path, target_folder / rel_path, shallow_comparison
-            ):
+        if source_path.is_file() and target_path.is_file():
+            if filecmp.cmp(source_path, target_path, shallow_comparison):
                 return Change.UNCHANGED_FILE
             else:
                 return Change.CHANGED_FILE
-        elif source_folder / rel_path.is_file() and target_folder / rel_path.is_dir():
+        elif source_path.is_file() and target_path.is_dir():
             return Change.CHANGED_FILE2FOLDER
-        elif source_folder / rel_path.is_dir() and target_folder / rel_path.is_file():
+        elif source_path.is_dir() and target_path.is_file():
             return Change.CHANGED_FOLDER2FILE
-        elif source_folder / rel_path.is_dir() and target_folder / rel_path.is_dir():
+        elif source_path.is_dir() and target_path.is_dir():
             return Change.UNCHANGED_FOLDER
         else:
             assert False, "There shouldnt be any paths which arent files or folder"
@@ -132,7 +134,7 @@ def _get_changes(
     source_paths_rel: Set[Path],
     target_paths_rel: Set[Path],
     all_paths_rel: Set[Path],
-) -> Dict[Change : List[Path]]:
+) -> Dict[Change, Set[Path]]:
     all_paths_rel = list(all_paths_rel)
     change_results = _run_executer_with_progress(
         n_threads,
@@ -149,39 +151,42 @@ def _get_changes(
             for rel_path in all_paths_rel
         ],
     )
-    changes = {c: [] for c in Change}
+    changes = {c: set() for c in Change}
     for change_type, rel_path in zip(change_results, all_paths_rel):
-        changes[change_type].append(rel_path)
+        changes[change_type].add(rel_path)
 
     return changes
 
 
-def _infer_actions(changes: Dict[Change : List[Path]]) -> Dict[Action, List[Path]]:
-    actions = {e: [] for e in Action}
+def _infer_actions(changes: Dict[Change, Set[Path]]) -> Dict[Action, Set[Path]]:
+    actions = {e: set() for e in Action}
     for change_type, paths in changes.items():
         if change_type == Change.REMOVED_FILE:
-            actions[Action.DELETE_FILE].extend(paths)
+            actions[Action.DELETE_FILE].update(paths)
         elif change_type == Change.REMOVED_FOLDER:
-            actions[Action.DELETE_FOLDER].extend(paths)
+            actions[Action.DELETE_FOLDER].update(paths)
         elif change_type == Change.NEW_FILE:
-            actions[Action.COPY_FILE].extend(paths)
+            actions[Action.COPY_FILE].update(paths)
         elif change_type == Change.NEW_FOLDER:
-            actions[Action.CREATE_FOLDER].extend(paths)
+            actions[Action.CREATE_FOLDER].update(paths)
         elif change_type == Change.CHANGED_FILE:
-            actions[Action.DELETE_FILE].extend(paths)
-            actions[Action.COPY_FILE].extend(paths)
+            actions[Action.DELETE_FILE].update(paths)
+            actions[Action.COPY_FILE].update(paths)
         elif change_type == Change.CHANGED_FILE2FOLDER:
-            actions[Action.DELETE_FILE].extend(paths)
-            actions[Action.CREATE_FOLDER].extend(paths)
+            actions[Action.DELETE_FILE].update(paths)
+            actions[Action.CREATE_FOLDER].update(paths)
         elif change_type == Change.CHANGED_FOLDER2FILE:
-            actions[Action.DELETE_FOLDER].extend(paths)
-            actions[Action.COPY_FILE].extend(paths)
+            actions[Action.DELETE_FOLDER].update(paths)
+            actions[Action.COPY_FILE].update(paths)
 
     return actions
 
 
 def _log_actions(
-    actions: Dict[Change, List[Path]], changes: Dict[Action, List[Path]], verbose: bool
+    actions: Dict[Change, Set[Path]],
+    changes: Dict[Action, Set[Path]],
+    verbose: bool,
+    ask: bool,
 ):
     logging.info(f"{len(changes[Change.UNCHANGED_FILE])} are unchanged.")
     for action, paths in actions.items():
@@ -195,9 +200,19 @@ def _log_actions(
             logging.info("\n".join([str(p) for p in paths]))
 
     logging.info("Do you want to continue? (y/n)")
-    if input("y/n: ") != "y":
-        logging.info("Aborting...")
-        exit()
+    if ask:
+        if input("y/n: ") != "y":
+            logging.info("Aborting...")
+            exit()
+
+
+def _remove_dirs(dirs):
+    paths_by_depth = defaultdict(list)
+    for p in dirs:
+        paths_by_depth[len(p.parts)].append(p)
+
+    for depth in sorted(parts_by_depth.keys()):
+        _run_executer_with_progress()
 
 
 def sync_folders(
@@ -206,17 +221,19 @@ def sync_folders(
     n_threads: int = 1,
     shallow_comparison: bool = True,
     verbose_logging: bool = False,
+    ask: bool = True,
 ):
     logging.info(f"Syncing {source_folder} to {target_folder}")
+    print(f"Syncing {source_folder} to {target_folder}")
     start_time = time.time()
 
     logging.info("Detecting paths...")
-    source_paths = source_folder.rglob("*")
-    target_paths = target_folder.rglob("*")
+    source_paths = set(source_folder.rglob("*"))
+    target_paths = set(target_folder.rglob("*"))
 
     logging.info("Checking for invalid types")
     invalid_source_paths, invalid_target_paths = _handle_invlid_types(
-        source_paths, target_paths
+        source_paths, target_paths, ask
     )
     source_paths = source_paths - invalid_source_paths
     target_paths = target_paths - invalid_target_paths
@@ -227,7 +244,7 @@ def sync_folders(
     all_paths_rel = source_paths_rel | target_paths_rel
 
     logging.info("Determining changes...")
-    changes: Dict[Change, List[Path]] = _get_changes(
+    changes: Dict[Change, Set[Path]] = _get_changes(
         n_threads,
         source_folder,
         target_folder,
@@ -238,37 +255,42 @@ def sync_folders(
     )
 
     logging.info("Inferring actions...")
-    actions: Dict[Action, List[Path]] = _infer_actions(changes)
+    actions: Dict[Action, Set[Path]] = _infer_actions(changes)
 
     logging.info("The following actions will be applied on the target folder:")
-    _log_actions(actions, changes, verbose_logging)
+    _log_actions(actions, changes, verbose_logging, ask)
 
     logging.info("Applying changes...")
+
     logging.info("Deleting files...")
     _run_executer_with_progress(
         n_threads,
         lambda rel_path: (target_folder / rel_path).unlink(),
-        actions[Action.DELETE_FILE],
+        [(a,) for a in actions[Action.DELETE_FILE]],
     )
+
     logging.info("Deleting (now empty) folders...")
+    # FIXME folders can still contain other empty folders
     _run_executer_with_progress(
         n_threads,
         lambda rel_path: (target_folder / rel_path).rmdir(),
-        actions[Action.DELETE_FOLDER],
+        [(a,) for a in actions[Action.DELETE_FOLDER]],
     )
+
     logging.info("Creating folders...")
     _run_executer_with_progress(
         n_threads,
-        lambda rel_path: (target_folder / rel_path).mkdir(parents=True, exists_ok=True),
-        actions[Action.CREATE_FOLDER],
+        lambda rel_path: (target_folder / rel_path).mkdir(parents=True, exist_ok=True),
+        [(a,) for a in actions[Action.CREATE_FOLDER]],
     )
+
     logging.info("Copying files...")
     _run_executer_with_progress(
         n_threads,
         lambda rel_path: shutil.copy2(
             source_folder / rel_path, target_folder / rel_path
         ),
-        actions[Action.COPY_FILE],
+        [(a,) for a in actions[Action.COPY_FILE]],
     )
 
     logging.info(
