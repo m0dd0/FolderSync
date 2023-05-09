@@ -38,6 +38,28 @@ def _run_executer_with_progress(
     data: Union[List[Tuple], List[List[Tuple]]],
     batched: bool = False,
 ) -> List[List[Any]]:
+    """Executes a function in parallel on all data and shows a progress bar which is
+    updaed for each finished task.
+
+    Args:
+        n_threads (int): The number of threads to use
+        func (Callable): The function to execute
+        data (Union[List[Tuple], List[List[Tuple]]]): The data to pass to the function.
+            If batched is False, this should be a list of tuples.
+            Each elemnt of the tuple will be passed as an argument to the function.
+            If batched is True, this should be a list of lists of tuples.
+            The outer list represents the batches and the inner list represents the
+            arguments for each batch.
+        batched (bool, optional): Whether the data is batched or not. Defaults to False.
+            If the data is batches the data in the first batch will be processed first and so on.
+
+    Returns:
+        List[List[Any]]: The results of the function calls.
+            If batched is False, this will be a list of the results of the function calls.
+            If batched is True, this will be a list of lists of the results of the function calls.
+            The outer list represents the batches and the inner list represents the results of each batch.
+    """
+
     if not batched:
         data_batches = [data]
     else:
@@ -65,6 +87,18 @@ def _run_executer_with_progress(
 def _handle_invlid_types(
     source_paths: Set[Path], target_paths: Set[Path], ask: bool
 ) -> Tuple[Set[Path], Set[Path]]:
+    """Checks if the paths are valid (i.e. if they are files or directories) and
+    asks the user if he wants to continue if there are invalid paths.
+    Invalid paths are deleted from the target folder.
+
+    Args:
+        source_paths (Set[Path]): The paths in the source folder
+        target_paths (Set[Path]): The paths in the target folder
+        ask (bool): Whether to ask the user if he wants to continue if there are invalid paths
+
+    Returns:
+        Tuple[Set[Path], Set[Path]]: The invalid paths in the source and target folder
+    """
     invalid_source_paths = {
         p for p in source_paths if not p.is_file() and not p.is_dir()
     }
@@ -107,6 +141,19 @@ def _determine_change(
     in_source: bool,
     in_target: bool,
 ) -> Change:
+    """Determines the change of a file in the target folder for a given relative path.
+
+    Args:
+        rel_path (Path): The relative path of the file
+        source_folder (Path): The source folder
+        target_folder (Path): The target folder
+        shallow_comparison (bool): Whether to use a shallow comparison for files
+        in_source (bool): Whether the file is in the source folder
+        in_target (bool): Whether the file is in the target folder
+
+    Returns:
+        Change: The type of change of the file
+    """
     source_path = source_folder / rel_path
     target_path = target_folder / rel_path
 
@@ -149,9 +196,22 @@ def _get_changes(
     shallow_comparison: bool,
     source_paths_rel: Set[Path],
     target_paths_rel: Set[Path],
-    all_paths_rel: Set[Path],
 ) -> Dict[Change, Set[Path]]:
-    all_paths_rel = list(all_paths_rel)
+    """Determines the changes of all files in the target folder and returns them as a dictionary mapped to the change type.
+    Execution is parallelized.
+
+    Args:
+        n_threads (int): The number of threads to use
+        source_folder (Path): The source folder
+        target_folder (Path): The target folder
+        shallow_comparison (bool): Whether to use a shallow comparison for files
+        source_paths_rel (Set[Path]): The relative paths of the files in the source folder
+        target_paths_rel (Set[Path]): The relative paths of the files in the target folder
+
+    Returns:
+        Dict[Change, Set[Path]]: A dictionary mapping the change type to the relative paths of the files with that change
+    """
+    all_paths_rel = list(source_paths_rel | target_paths_rel)
     change_results = _run_executer_with_progress(
         n_threads,
         _determine_change,
@@ -175,6 +235,14 @@ def _get_changes(
 
 
 def _infer_actions(changes: Dict[Change, Set[Path]]) -> Dict[Action, Set[Path]]:
+    """Infers the actions to be taken for each change type.
+
+    Args:
+        changes (Dict[Change, Set[Path]]): A dictionary mapping the change type to the relative paths of the files with that change
+
+    Returns:
+        Dict[Action, Set[Path]]: A dictionary mapping the action type to the relative paths of the files with that action
+    """
     actions = {e: set() for e in Action}
     for change_type, paths in changes.items():
         if change_type == Change.REMOVED_FILE:
@@ -204,6 +272,14 @@ def _log_actions(
     verbose: bool,
     ask: bool,
 ):
+    """Logs the actions and changes to be taken and asks the user for confirmation.
+
+    Args:
+        actions (Dict[Change, Set[Path]]): A dictionary mapping the action type to the relative paths of the files with that action
+        changes (Dict[Action, Set[Path]]): A dictionary mapping the change type to the relative paths of the files with that change
+        verbose (bool): Whether to log the paths of the files with each action
+        ask (bool): Whether to ask the user for confirmation
+    """
     logging.info(f"{len(changes[Change.UNCHANGED_FILE])} are unchanged.")
     for action, paths in actions.items():
         info_str = f"{action.name}: {len(paths)}"
@@ -223,6 +299,15 @@ def _log_actions(
 
 
 def _get_paths_in_levelbatches(paths: Set[Path]) -> List[Set[Tuple[Path]]]:
+    """Groups the paths by their depth and returns them as a list of batches.
+    The batches are sorted by the depth of the paths in them, with the deepest paths first.
+
+    Args:
+        paths (Set[Path]): The paths to group
+
+    Returns:
+        List[Set[Tuple[Path]]]: A list of batches of paths
+    """
     paths_by_depth = defaultdict(list)
     for p in paths:
         paths_by_depth[len(p.parts)].append(p)
@@ -241,6 +326,21 @@ def sync_folders(
     verbose_logging: bool = False,
     ask: bool = True,
 ):
+    """Syncs two folders. This means the target folder will be made identical to the source folder.
+    Identical files will be untouched, files that are only in the source folder will be copied to the target folder,
+    files that are only in the target folder will be deleted, and files that are in both folders but have different
+    contents will be overwritten.
+
+    Args:
+        source_folder (Path): The path to the source folder
+        target_folder (Path): The path to the target folder
+        n_threads (int, optional): The number of threads to use for the comparison. Defaults to 1.
+        shallow_comparison (bool, optional): Whether to only compare the file sizes and modification times. Defaults to True.
+        verbose_logging (bool, optional): Whether to log the paths of the files with each action. Defaults to False.
+        ask (bool, optional): Whether to ask the user for confirmation. Defaults to True.
+    """
+    logging.basicConfig(level=logging.INFO)
+
     logging.info(f"Syncing {source_folder} to {target_folder}")
     print(f"Syncing {source_folder} to {target_folder}")
     start_time = time.time()
@@ -259,7 +359,6 @@ def sync_folders(
     logging.info("Making relative paths...")
     source_paths_rel = {p.relative_to(source_folder) for p in source_folder.rglob("*")}
     target_paths_rel = {p.relative_to(target_folder) for p in target_folder.rglob("*")}
-    all_paths_rel = source_paths_rel | target_paths_rel
 
     logging.info("Determining changes...")
     changes: Dict[Change, Set[Path]] = _get_changes(
@@ -269,7 +368,6 @@ def sync_folders(
         shallow_comparison,
         source_paths_rel,
         target_paths_rel,
-        all_paths_rel,
     )
 
     logging.info("Inferring actions...")
