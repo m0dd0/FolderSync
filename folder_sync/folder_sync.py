@@ -74,8 +74,7 @@ def _run_executer_with_progress(
             for _ in concurrent.futures.as_completed(futures):
                 pbar.update(1)
 
-                executer.shutdown(wait=True)
-
+            executer.shutdown(wait=True)
             results.append([f.result() for f in futures])
 
     if not batched:
