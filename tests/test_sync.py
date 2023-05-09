@@ -1,8 +1,9 @@
 import pytest
 from pathlib import Path
 import shutil
+import logging
 
-import seedir
+# import seedir
 
 from folder_sync import sync_folders
 
@@ -67,7 +68,8 @@ def target_folder(request, tmp_path):
 def test_sync(source_folders, target_folder):
     source_folder, control_source_folder = source_folders
 
-    sync_folders(source_folder, target_folder)
+    logging.basicConfig(level=logging.INFO)
+    sync_folders(source_folder, target_folder, ask=False)
 
     # NOTE: we do not combine the subfolder checks to one assert because it makes it easier to see which check fails
 
