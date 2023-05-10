@@ -32,11 +32,20 @@ class Action(enum.Enum):
     DELETE_FOLDER = enum.auto()
 
 
+def _sequential_execution(func, data):
+    return [func(*d) for d in data]
+
+
+def _chunk_list(l: List, chunk_size):
+    return [l[i : i + chunk_size] for i in range(0, len(l), chunk_size)]
+
+
 def _run_executer_with_progress(
     n_threads: int,
     func: Callable,
-    data: Union[List[Tuple], List[List[Tuple]]],
-    batched: bool = False,
+    data: List[Tuple[Any]],
+    order: List[int] = None,
+    data_per_thread: int = 1,
 ) -> List[List[Any]]:
     """Executes a function in parallel on all data and shows a progress bar which is
     updaed for each finished task.
@@ -44,43 +53,40 @@ def _run_executer_with_progress(
     Args:
         n_threads (int): The number of threads to use
         func (Callable): The function to execute
-        data (Union[List[Tuple], List[List[Tuple]]]): The data to pass to the function.
-            If batched is False, this should be a list of tuples.
-            Each elemnt of the tuple will be passed as an argument to the function.
-            If batched is True, this should be a list of lists of tuples.
-            The outer list represents the batches and the inner list represents the
-            arguments for each batch.
-        batched (bool, optional): Whether the data is batched or not. Defaults to False.
-            If the data is batches the data in the first batch will be processed first and so on.
-
-    Returns:
-        List[List[Any]]: The results of the function calls.
-            If batched is False, this will be a list of the results of the function calls.
-            If batched is True, this will be a list of lists of the results of the function calls.
-            The outer list represents the batches and the inner list represents the results of each batch.
     """
 
-    if not batched:
-        data_batches = [data]
-    else:
-        data_batches = data
+    if order is None:
+        order = [0] * len(data)
 
-    results = []
-    with tqdm(total=sum(len(d) for d in data_batches)) as pbar:
-        for data in data_batches:
+    ordered_data = defaultdict(list)
+    for idx, (val, ord) in enumerate(zip(data, order)):
+        ordered_data[ord].append((idx, val))
+
+    n_groups = sum(len(v) // data_per_thread + 1 for v in ordered_data.values())
+    final_results = [None] * len(data)
+
+    with tqdm(total=n_groups) as pbar:
+        for ord, indexed_data in ordered_data.items():
             executer = concurrent.futures.ThreadPoolExecutor(max_workers=n_threads)
-            futures = [executer.submit(func, *d) for d in data]
 
-            for _ in concurrent.futures.as_completed(futures):
+            indices, arguments = zip(*indexed_data)
+            argument_chunks = _chunk_list(arguments, data_per_thread)
+
+            chunk_futures = [
+                executer.submit(_sequential_execution, func, arg_chunk)
+                for arg_chunk in argument_chunks
+            ]
+
+            for _ in concurrent.futures.as_completed(chunk_futures):
                 pbar.update(1)
 
+            ord_results = [r for fut in chunk_futures for r in fut.results()]
+            for idx, result in zip(indices, ord_results):
+                final_results[idx] = result
+
             executer.shutdown(wait=True)
-            results.append([f.result() for f in futures])
 
-    if not batched:
-        return results[0]
-
-    return results
+    return final_results
 
 
 def _handle_invlid_types(
@@ -388,8 +394,8 @@ def sync_folders(
     _run_executer_with_progress(
         n_threads,
         lambda rel_path: (target_folder / rel_path).rmdir(),
-        _get_paths_in_levelbatches(actions[Action.DELETE_FOLDER]),
-        batched=True,
+        actions[Action.DELETE_FOLDER],
+        order=[len(p.parts) for p in actions[Action.DELETE_FOLDER]],
     )
 
     logging.info("Creating folders...")
