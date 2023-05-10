@@ -75,7 +75,6 @@ def _run_executer_with_progress(
                 pbar.update(1)
 
             else:
-                assert False
                 executer = concurrent.futures.ThreadPoolExecutor(max_workers=n_threads)
                 chunk_futures = [
                     executer.submit(_sequential_execution, func, arg_chunk)
