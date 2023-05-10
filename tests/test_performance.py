@@ -36,62 +36,58 @@ class TestFixturePerformance:
         assert len(list(tmp_path.rglob("*"))) == n_files
 
 
-@pytest.mark.parametrize(
-    "empty_folders, n_threads, datapoints_per_future",
-    [
-        # ((10, 3), 4, 1),
-        # ((10, 3), 1, 1),
-        # ((10, 4), 1, 1),
-        # ((10, 4), 4, 1),
-        ((10, 4), 10, 1),
-        # ((10, 4), 100, 1),
-        # ((10, 4), 1000, 1),
-        # ((10, 4), 10000, 1),
-        ((10, 4), 10, 10),
-        ((10, 4), 10, 100),  # this seems to be the sweet spot
-        ((10, 4), 10, 1000),
-    ],
-    indirect=["empty_folders"],
-)
-def test_benchmark_parallel_folder_deletion(
-    benchmark, empty_folders, n_threads, datapoints_per_future
-):
-    # folder creation takes some time so do not wonder if this takes longer than expected
-    data = [(p,) for p in empty_folders.rglob("*")]
-    order = [-len(p[0].parts) for p in data]
-    benchmark.pedantic(
+class TestFileOperationPerformance:
+    @pytest.mark.parametrize(
+        "empty_folders, n_threads, datapoints_per_future",
+        [
+            # ((10, 3), 4, 1),
+            # ((10, 3), 1, 1),
+            # ((10, 4), 1, 1),
+            # ((10, 4), 4, 1),
+            ((10, 4), 10, 1),
+            # ((10, 4), 100, 1),
+            # ((10, 4), 1000, 1),
+            # ((10, 4), 10000, 1),
+            ((10, 4), 10, 10),
+            ((10, 4), 10, 100),  # this seems to be the sweet spot
+            ((10, 4), 10, 1000),
+        ],
+        indirect=["empty_folders"],
+    )
+    def test_benchmark_parallel_folder_deletion(
+        self, benchmark, empty_folders, n_threads, datapoints_per_future
+    ):
+        # folder creation takes some time so do not wonder if this takes longer than expected
+        data = [(p,) for p in empty_folders.rglob("*")]
+        order = [-len(p[0].parts) for p in data]
+        benchmark.pedantic(
+            fs._run_executer_with_progress,
+            (
+                n_threads,
+                lambda p: p.rmdir(),
+                data,
+                order,
+                datapoints_per_future,
+            ),
+            rounds=1,
+            iterations=1,
+        )
+
+        assert len(list(empty_folders.rglob("*"))) == 0
+
+
+def test_benchmark_executer_overhead(benchmark):
+    repetitions = 1000
+    execution_time = 0.001
+
+    benchmark(
+        # lambda: [time.sleep(execution_time) for _ in range(repetitions)],
+        #####
         fs._run_executer_with_progress,
-        (
-            n_threads,
-            lambda p: p.rmdir(),
-            data,
-            order,
-            datapoints_per_future,
-        ),
-        rounds=1,
-        iterations=1,
+        1,
+        lambda: [time.sleep(execution_time) for _ in range(repetitions)],
+        [[] * repetitions],
+        datapoints_per_future=2 * repetitions,
     )
 
-    assert len(list(empty_folders.rglob("*"))) == 0
-
-
-@pytest.mark.parametrize(
-    "empty_folders",
-    [
-        # (10, 3),
-        (10, 4),
-        # (10, 5),
-    ],
-    indirect=["empty_folders"],
-)
-def test_benchmark_sequential_folder_deletion(benchmark, empty_folders):
-    # folder creation takes some time so do not wonder if this takes longer than expected
-    data = [p for p in empty_folders.rglob("*")]
-    order = [-len(p.parts) for p in data]
-    sorted_data = [d for _, d in sorted(zip(order, data))]
-
-    benchmark.pedantic(
-        lambda ps: [p.rmdir() for p in ps], (sorted_data,), rounds=1, iterations=1
-    )
-
-    assert len(list(empty_folders.rglob("*"))) == 0
+    # --> there is effectively no overhead --> we do not need a sequential testcase as baseline as the executer will do the same thing
