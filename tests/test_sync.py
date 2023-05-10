@@ -1,20 +1,11 @@
 import pytest
-from pathlib import Path
-import shutil
 import logging
+from .test_data import fixtures
+from .test_data.fixtures import source_folders, target_folder
 
 # import seedir
 
 from folder_sync import sync_folders
-
-
-TEST_DATA = Path(__file__).parent / "test_data"
-TEST_FOLDERS = [p.name for p in TEST_DATA.iterdir() if p.is_dir()]
-ALL_FOLDER_COMBINATIONS = [
-    (source_folder, target_folder)
-    for source_folder in TEST_FOLDERS
-    for target_folder in TEST_FOLDERS
-]
 
 
 def assert_subset_folder(superset_folder, subset_folder):
@@ -30,30 +21,9 @@ def assert_subset_folder(superset_folder, subset_folder):
             assert (subset_folder / elem.name).stat().st_size == elem.stat().st_size
 
 
-def setup_folder(name, root):
-    shutil.copytree(TEST_DATA / name, root / name)
-    for path in (root / name).rglob(".gitkeep"):
-        path.unlink()
-
-    return root / name
-
-
-@pytest.fixture
-def source_folders(request, tmp_path_factory):
-    return (
-        setup_folder(request.param, tmp_path_factory.mktemp("temp_folder")),
-        setup_folder(request.param, tmp_path_factory.mktemp("temp_folder")),
-    )
-
-
-@pytest.fixture
-def target_folder(request, tmp_path):
-    return setup_folder(request.param, tmp_path)
-
-
 @pytest.mark.parametrize(
     "source_folders, target_folder",
-    ALL_FOLDER_COMBINATIONS,
+    fixtures.ALL_FOLDER_COMBINATIONS,
     # [
     # ("basic", "empty"),
     # ("basic", "trimmed"),

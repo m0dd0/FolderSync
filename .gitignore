@@ -7,3 +7,4 @@ dist/
 venv
 .vscode
 .pytest_cache
+tests/large_test_data/*
