@@ -25,15 +25,6 @@ def assert_subset_folder(superset_folder, subset_folder):
 @pytest.mark.parametrize(
     "source_folders, target_folder",
     fixtures.ALL_FOLDER_COMBINATIONS,
-    # [
-    # ("basic", "empty"),
-    # ("basic", "trimmed"),
-    # ("basic", "basic"),
-    # ("basic", "less_empty_folders"),
-    # ("basic", "more_empty_folders"),
-    # ("basic", "renamed_file2folder"),
-    # ("basic", "changed_data"),
-    # ],
     indirect=["source_folders", "target_folder"],
 )
 def test_sync(source_folders, target_folder):
