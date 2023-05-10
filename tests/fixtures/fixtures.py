@@ -1,8 +1,8 @@
 from pathlib import Path
 import shutil
-from typing import Tuple, List
+from typing import Tuple, List, Dict
+import os
 
-import numpy as np
 import pytest
 
 TEST_DATA = Path(__file__).parent
@@ -54,17 +54,16 @@ def empty_folders(request: pytest.FixtureRequest, tmp_path: Path) -> List[Path]:
     return tmp_path
 
 
-def create_random_files(component_weights, means, vars, n_files, root: Path):
-    for i in range(n_files):
-        component_idx = np.random.choice(len(component_weights), p=component_weights)
-        size = int(np.random.normal(means[component_idx], vars[component_idx]))
-        with open(root / str(i), "wb") as f:
-            f.write(np.random.bytes(size))
+def create_random_files(file_distribution: Dict[int, int], root: Path):
+    for size, n in file_distribution.items():
+        n = int(n)
+        size = int(size)
+        for i in range(n):
+            with open(root / f"{size//1e3}kb_{i}", "wb") as f:
+                f.write(os.urandom(size))
 
 
 @pytest.fixture
 def random_files(request: pytest.FixtureRequest, tmp_path: Path) -> List[Path]:
-    component_weights, means, vars = zip(*request.param[0])
-    n_files = request.param[1]
-    create_random_files(component_weights, means, vars, n_files, tmp_path)
+    create_random_files(request.param, tmp_path)
     return tmp_path
