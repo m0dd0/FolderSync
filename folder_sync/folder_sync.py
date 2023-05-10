@@ -303,26 +303,6 @@ def _log_actions(
             exit()
 
 
-def _get_paths_in_levelbatches(paths: Set[Path]) -> List[Set[Tuple[Path]]]:
-    """Groups the paths by their depth and returns them as a list of batches.
-    The batches are sorted by the depth of the paths in them, with the deepest paths first.
-
-    Args:
-        paths (Set[Path]): The paths to group
-
-    Returns:
-        List[Set[Tuple[Path]]]: A list of batches of paths
-    """
-    paths_by_depth = defaultdict(list)
-    for p in paths:
-        paths_by_depth[len(p.parts)].append(p)
-    path_batches = []
-    for level in sorted(paths_by_depth.keys(), reverse=True):
-        path_batches.append([(p,) for p in paths_by_depth[level]])
-
-    return path_batches
-
-
 def sync_folders(
     source_folder: Path,
     target_folder: Path,
