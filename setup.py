@@ -25,6 +25,7 @@ setuptools.setup(
             "seedir",
             "emoji",
             "pytest-benchmark",
+            "numpy",
         ]
     },
     include_package_data=True,
