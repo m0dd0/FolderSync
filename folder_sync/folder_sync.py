@@ -45,7 +45,7 @@ def _run_executer_with_progress(
     func: Callable,
     data: List[Tuple[Any]],
     order: List[int] = None,
-    data_per_thread: int = 1,
+    datapoints_per_future: int = 1,
 ) -> List[List[Any]]:
     """Executes a function in parallel on all data and shows a progress bar which is
     updaed for each finished task.
@@ -62,29 +62,33 @@ def _run_executer_with_progress(
     for idx, (val, ord) in enumerate(zip(data, order)):
         ordered_data[ord].append((idx, val))
 
-    n_groups = sum(len(v) // data_per_thread + 1 for v in ordered_data.values())
+    n_groups = sum(len(v) // datapoints_per_future + 1 for v in ordered_data.values())
     final_results = [None] * len(data)
 
     with tqdm(total=n_groups) as pbar:
         for ord, indexed_data in sorted(ordered_data.items()):
-            executer = concurrent.futures.ThreadPoolExecutor(max_workers=n_threads)
-
             indices, arguments = zip(*indexed_data)
-            argument_chunks = _chunk_list(arguments, data_per_thread)
+            argument_chunks = _chunk_list(arguments, datapoints_per_future)
 
-            chunk_futures = [
-                executer.submit(_sequential_execution, func, arg_chunk)
-                for arg_chunk in argument_chunks
-            ]
-
-            for _ in concurrent.futures.as_completed(chunk_futures):
+            if len(argument_chunks) == 1:
+                ord_results = _sequential_execution(func, argument_chunks[0])
                 pbar.update(1)
 
-            ord_results = [r for fut in chunk_futures for r in fut.result()]
+            else:
+                executer = concurrent.futures.ThreadPoolExecutor(max_workers=n_threads)
+                chunk_futures = [
+                    executer.submit(_sequential_execution, func, arg_chunk)
+                    for arg_chunk in argument_chunks
+                ]
+
+                for _ in concurrent.futures.as_completed(chunk_futures):
+                    pbar.update(1)
+
+                ord_results = [r for fut in chunk_futures for r in fut.result()]
+                executer.shutdown(wait=True)
+
             for idx, result in zip(indices, ord_results):
                 final_results[idx] = result
-
-            executer.shutdown(wait=True)
 
     return final_results
 
