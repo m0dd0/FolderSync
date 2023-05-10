@@ -1,12 +1,12 @@
-import pytest
 import logging
 
-# from .test_data import fixtures
-from .fixtures import source_folders, target_folder
-
 # import seedir
+import pytest
 
 from folder_sync import sync_folders
+
+from . import fixtures
+from .fixtures import source_folders, target_folder
 
 
 def assert_subset_folder(superset_folder, subset_folder):

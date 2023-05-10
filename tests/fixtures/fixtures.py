@@ -3,7 +3,7 @@ import shutil
 
 import pytest
 
-TEST_DATA = Path(__file__).parent / "test_data"
+TEST_DATA = Path(__file__).parent
 TEST_FOLDERS = [p.name for p in TEST_DATA.iterdir() if p.is_dir()]
 ALL_FOLDER_COMBINATIONS = [
     (source_folder, target_folder)

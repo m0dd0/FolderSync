@@ -66,7 +66,7 @@ def _run_executer_with_progress(
     final_results = [None] * len(data)
 
     with tqdm(total=n_groups) as pbar:
-        for ord, indexed_data in ordered_data.items():
+        for ord, indexed_data in sorted(ordered_data.items()):
             executer = concurrent.futures.ThreadPoolExecutor(max_workers=n_threads)
 
             indices, arguments = zip(*indexed_data)
@@ -80,7 +80,7 @@ def _run_executer_with_progress(
             for _ in concurrent.futures.as_completed(chunk_futures):
                 pbar.update(1)
 
-            ord_results = [r for fut in chunk_futures for r in fut.results()]
+            ord_results = [r for fut in chunk_futures for r in fut.result()]
             for idx, result in zip(indices, ord_results):
                 final_results[idx] = result
 
@@ -394,8 +394,8 @@ def sync_folders(
     _run_executer_with_progress(
         n_threads,
         lambda rel_path: (target_folder / rel_path).rmdir(),
-        actions[Action.DELETE_FOLDER],
-        order=[len(p.parts) for p in actions[Action.DELETE_FOLDER]],
+        [(p,) for p in actions[Action.DELETE_FOLDER]],
+        order=[-len(p.parts) for p in actions[Action.DELETE_FOLDER]],
     )
 
     logging.info("Creating folders...")
