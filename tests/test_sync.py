@@ -1,7 +1,8 @@
 import pytest
 import logging
-from .test_data import fixtures
-from .test_data.fixtures import source_folders, target_folder
+
+# from .test_data import fixtures
+from .fixtures import source_folders, target_folder
 
 # import seedir
 
