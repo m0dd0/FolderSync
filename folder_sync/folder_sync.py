@@ -336,6 +336,12 @@ def sync_folders(
     logging.basicConfig(level=logging.INFO)
 
     logging.info(f"Syncing {source_folder} to {target_folder}")
+    if not source_folder.exists():
+        logging.error(f"{source_folder} does not exist.")
+        exit()
+    if not target_folder.exists():
+        logging.error(f"{target_folder} does not exist.")
+        exit()
     start_time = time.time()
 
     logging.info("Detecting paths...")
