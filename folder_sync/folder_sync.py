@@ -1,5 +1,5 @@
 from pathlib import Path
-from typing import List, Tuple, Set, Callable, Any, Dict, Union
+from typing import List, Tuple, Set, Callable, Any, Dict
 import logging
 import concurrent.futures
 import shutil
@@ -32,11 +32,11 @@ class Action(enum.Enum):
     DELETE_FOLDER = enum.auto()
 
 
-def _sequential_execution(func, data):
+def _sequential_execution(func: Callable, data: List[Any]) -> List[Any]:
     return [func(*d) for d in data]
 
 
-def _chunk_list(l: List, chunk_size):
+def _chunk_list(l: List[Any], chunk_size: int) -> List[List[Any]]:
     return [l[i : i + chunk_size] for i in range(0, len(l), chunk_size)]
 
 
@@ -53,6 +53,11 @@ def _run_executer_with_progress(
     Args:
         n_threads (int): The number of threads to use
         func (Callable): The function to execute
+        data (List[Tuple[Any]]): The data to pass to the function
+        order (List[int], optional): The order in which the data should be processed. Defaults to None.
+            It is ensured that data with lower order is processed before data with higher order.
+            Data with the same order can be processed in parallel.
+        datapoints_per_future (int, optional): The number of datapoints which are processed in one future/single thread.
     """
 
     if order is None:
@@ -331,7 +336,6 @@ def sync_folders(
     logging.basicConfig(level=logging.INFO)
 
     logging.info(f"Syncing {source_folder} to {target_folder}")
-    print(f"Syncing {source_folder} to {target_folder}")
     start_time = time.time()
 
     logging.info("Detecting paths...")
