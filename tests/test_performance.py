@@ -67,9 +67,9 @@ class TestFileOperationPerformance:
         benchmark.pedantic(
             fs._run_executer_with_progress,
             (
-                n_threads,
                 lambda p: p.rmdir(),
                 paths,
+                n_threads,
                 order,
                 datapoints_per_future,
             ),
@@ -97,7 +97,7 @@ class TestFileOperationPerformance:
         paths = [(p,) for p in random_files.rglob("*")]
         benchmark.pedantic(
             fs._run_executer_with_progress,
-            (n_threads, lambda p: p.unlink(), paths),
+            (lambda p: p.unlink(), paths, n_threads),
             {"datapoints_per_future": datapoints_per_future},
             rounds=1,
             iterations=1,
@@ -125,9 +125,9 @@ class TestFileOperationPerformance:
         benchmark.pedantic(
             fs._run_executer_with_progress,
             (
-                n_threads,
                 lambda p: p.mkdir(),
                 [(tmp_path / str(i),) for i in range(n_folders)],
+                n_threads,
             ),
             {"datapoints_per_future": datapoints_per_future},
             rounds=1,
@@ -156,9 +156,9 @@ class TestFileOperationPerformance:
         benchmark.pedantic(
             fs._run_executer_with_progress,
             (
-                n_threads,
                 lambda p: shutil.copy2(p, target_path),
                 source_paths,
+                n_threads,
             ),
             {"datapoints_per_future": datapoints_per_future},
             rounds=1,
@@ -174,9 +174,9 @@ class TestFileOperationPerformance:
 #         # lambda: [time.sleep(execution_time) for _ in range(repetitions)],
 #         #####
 #         fs._run_executer_with_progress,
-#         1,
 #         lambda: [time.sleep(execution_time) for _ in range(repetitions)],
 #         [[] * repetitions],
+#         1,
 #         datapoints_per_future=2 * repetitions,
 #     )
 

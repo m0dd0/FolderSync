@@ -6,7 +6,9 @@ import os
 import pytest
 
 TEST_DATA = Path(__file__).parent
-TEST_FOLDERS = [p.name for p in TEST_DATA.iterdir() if p.is_dir()]
+TEST_FOLDERS = [
+    p.name for p in TEST_DATA.iterdir() if p.is_dir() and p.name != "__pycache__"
+]
 ALL_FOLDER_COMBINATIONS = [
     (source_folder, target_folder)
     for source_folder in TEST_FOLDERS

@@ -41,9 +41,9 @@ def _chunk_list(l: List[Any], chunk_size: int) -> List[List[Any]]:
 
 
 def _run_executer_with_progress(
-    n_threads: int,
     func: Callable,
     data: List[Tuple[Any]],
+    n_threads: int,
     order: List[int] = None,
     datapoints_per_future: int = 1,
 ) -> List[List[Any]]:
@@ -227,7 +227,6 @@ def _get_changes(
     """
     all_paths_rel = list(source_paths_rel | target_paths_rel)
     change_results = _run_executer_with_progress(
-        n_threads,
         _determine_change,
         [
             (
@@ -240,6 +239,7 @@ def _get_changes(
             )
             for rel_path in all_paths_rel
         ],
+        n_threads,
     )
     changes = {c: set() for c in Change}
     for change_type, rel_path in zip(change_results, all_paths_rel):
@@ -373,33 +373,33 @@ def sync_folders(
 
     logging.info("Deleting files...")
     _run_executer_with_progress(
-        n_threads,
         lambda rel_path: (target_folder / rel_path).unlink(),
         [(p,) for p in actions[Action.DELETE_FILE]],
+        n_threads,
     )
 
     logging.info("Deleting (now empty) folders...")
     _run_executer_with_progress(
-        n_threads,
         lambda rel_path: (target_folder / rel_path).rmdir(),
         [(p,) for p in actions[Action.DELETE_FOLDER]],
+        n_threads,
         order=[-len(p.parts) for p in actions[Action.DELETE_FOLDER]],
     )
 
     logging.info("Creating folders...")
     _run_executer_with_progress(
-        n_threads,
         lambda rel_path: (target_folder / rel_path).mkdir(parents=True, exist_ok=True),
         [(a,) for a in actions[Action.CREATE_FOLDER]],
+        n_threads,
     )
 
     logging.info("Copying files...")
     _run_executer_with_progress(
-        n_threads,
         lambda rel_path: shutil.copy2(
             source_folder / rel_path, target_folder / rel_path
         ),
         [(a,) for a in actions[Action.COPY_FILE]],
+        n_threads,
     )
 
     logging.info(
