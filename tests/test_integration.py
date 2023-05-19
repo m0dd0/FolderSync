@@ -1,4 +1,5 @@
 import logging
+from pathlib import Path
 
 # import seedir
 import pytest
@@ -9,41 +10,49 @@ from . import fixtures
 from .fixtures import source_folders, target_folder
 
 
-def assert_subset_folder(superset_folder, subset_folder):
-    for elem in superset_folder.iterdir():
-        assert (subset_folder / elem.name).exists()
-        if elem.is_dir():
-            assert (subset_folder / elem.name).is_dir()
-            assert_subset_folder(elem, subset_folder / elem.name)
-        elif elem.is_file():
-            assert (subset_folder / elem.name).is_file()
-            assert (subset_folder / elem.name).read_bytes() == elem.read_bytes()
-            assert (subset_folder / elem.name).stat().st_mtime == elem.stat().st_mtime
-            assert (subset_folder / elem.name).stat().st_size == elem.stat().st_size
+def assert_identical_folder(folder_a: Path, folder_b: Path):
+    paths_a = folder_a.rglob("*")
+    paths_b = folder_b.rglob("*")
+
+    paths_a_rel = set([p.relative_to(folder_a) for p in paths_a])
+    paths_b_rel = set([p.relative_to(folder_b) for p in paths_b])
+
+    assert paths_a_rel == paths_b_rel
+
+    for path_a_rel in paths_a_rel:
+        path_a = folder_a / path_a_rel
+        path_b = folder_b / path_a_rel
+
+        if path_a.is_file():
+            assert path_b.is_file()
+            assert (
+                path_a.stat().st_mtime == path_b.stat().st_mtime
+            ), f"{path_a} {path_b}"
+            assert path_a.stat().st_size == path_b.stat().st_size
+            assert path_a.read_bytes() == path_b.read_bytes()
+
+        elif path_a.is_dir():
+            assert path_b.is_dir()
+        else:
+            raise ValueError(f"Unknown path type: {path_a}")
 
 
 @pytest.mark.parametrize(
     "source_folders, target_folder",
-    fixtures.ALL_FOLDER_COMBINATIONS,
+    # fixtures.ALL_FOLDER_COMBINATIONS,
+    [("basic", "changed_data")],
     indirect=["source_folders", "target_folder"],
 )
-def test_sync(source_folders, target_folder):
+def test_sync(source_folders, target_folder, caplog):
     source_folder, control_source_folder = source_folders
 
     logging.basicConfig(level=logging.INFO)
+    caplog.set_level(logging.INFO)
     sync_folders(source_folder, target_folder, ask=False)
 
-    # NOTE: we do not combine the subfolder checks to one assert because it makes it easier to see which check fails
-
-    # are all files and folders in source also in target?
-    assert_subset_folder(source_folder, target_folder)
-    # are all files and folders in target also in source?
-    # (if there are elements in target which are not in source, they should have been deleted)
-    assert_subset_folder(target_folder, source_folder)
-
-    # has source folder not been changed?
-    assert_subset_folder(control_source_folder, source_folder)
-    assert_subset_folder(source_folder, control_source_folder)
+    assert False
+    # assert_identical_folder(source_folder, target_folder)
+    # assert_identical_folder(control_source_folder, source_folder)
 
     # print("Control Source")
     # seedir.seedir(control_source_folder, style="emoji")
