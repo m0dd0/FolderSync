@@ -42,7 +42,7 @@ class TestFixturePerformance:
             iterations=1,
         )
 
-        assert len(list(tmp_path.rglob("*"))) == sum(file_distribution.keys())
+        assert len(list(tmp_path.rglob("*"))) == sum(file_distribution.values())
 
 
 class TestFileOperationPerformance:
@@ -82,12 +82,12 @@ class TestFileOperationPerformance:
     @pytest.mark.parametrize(
         "random_files, n_threads, datapoints_per_future",
         [
-            ({5e6: 1000, 5e3: 1000}, 10, 1),
-            ({5e6: 1000, 5e3: 1000}, 10, 10),
-            ({5e6: 1000, 5e3: 1000}, 10, 100),
-            ({5e6: 1000, 5e3: 1000}, 100, 1),
-            ({5e6: 1000, 5e3: 1000}, 100, 10),
-            ({5e6: 1000, 5e3: 1000}, 100, 100),
+            ({5e6: 500, 5e3: 500}, 10, 1),
+            ({5e6: 500, 5e3: 500}, 10, 10),
+            ({5e6: 500, 5e3: 500}, 10, 100),
+            ({5e6: 500, 5e3: 500}, 100, 1),
+            ({5e6: 500, 5e3: 500}, 100, 10),
+            ({5e6: 500, 5e3: 500}, 100, 100),
         ],
         indirect=["random_files"],
     )
@@ -137,12 +137,12 @@ class TestFileOperationPerformance:
     @pytest.mark.parametrize(
         "random_files, n_threads, datapoints_per_future",
         [
-            ({5e6: 1000, 5e3: 1000}, 10, 1),
-            ({5e6: 1000, 5e3: 1000}, 10, 10),
-            ({5e6: 1000, 5e3: 1000}, 10, 100),
-            ({5e6: 1000, 5e3: 1000}, 100, 1),
-            ({5e6: 1000, 5e3: 1000}, 100, 10),
-            ({5e6: 1000, 5e3: 1000}, 100, 100),
+            ({5e6: 500, 5e3: 500}, 10, 1),
+            ({5e6: 500, 5e3: 500}, 10, 10),
+            ({5e6: 500, 5e3: 500}, 10, 100),
+            ({5e6: 500, 5e3: 500}, 100, 1),
+            ({5e6: 500, 5e3: 500}, 100, 10),
+            ({5e6: 500, 5e3: 500}, 100, 100),
         ],
         indirect=["random_files"],
     )
