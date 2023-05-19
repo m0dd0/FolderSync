@@ -280,10 +280,18 @@ def _infer_actions(changes: Dict[Change, Set[Path]]) -> Dict[Action, Set[Path]]:
     return actions
 
 
+def _capped_path_list(paths: Set[Path], max_lines: int):
+    if max_lines < 0:
+        max_lines = len(paths)
+    return "\n".join([str(p) for p in paths[:max_lines]]) + (
+        "\n..." if len(paths) > max_lines else ""
+    )
+
+
 def _log_actions(
     actions: Dict[Change, Set[Path]],
     changes: Dict[Action, Set[Path]],
-    verbose: bool,
+    max_lines: int,
     ask: bool,
 ):
     """Logs the actions and changes to be taken and asks the user for confirmation.
@@ -291,19 +299,31 @@ def _log_actions(
     Args:
         actions (Dict[Change, Set[Path]]): A dictionary mapping the action type to the relative paths of the files with that action
         changes (Dict[Action, Set[Path]]): A dictionary mapping the change type to the relative paths of the files with that change
-        verbose (bool): Whether to log the paths of the files with each action
         ask (bool): Whether to ask the user for confirmation
     """
-    logging.info(f"{len(changes[Change.UNCHANGED_FILE])} are unchanged.")
-    for action, paths in actions.items():
-        info_str = f"{action.name}: {len(paths)}"
-        if action in (Action.CREATE_FOLDER, Action.DELETE_FOLDER):
-            info_str += (
-                f" ({len([p for p in paths if p.parent not in paths])} top-level)"
-            )
-        logging.info(info_str)
-        if verbose:
-            logging.info("\n".join([str(p) for p in paths]))
+    logging.info(f"{len(changes[Change.UNCHANGED_FILE])} files are unchanged.")
+    logging.info(_capped_path_list(changes[Change.UNCHANGED_FILE], max_lines))
+
+    logging.info(f"{len(changes[Change.CHANGED_FILE])} files are changed.")
+    logging.info(_capped_path_list(changes[Change.CHANGED_FILE], max_lines))
+
+    new_files = changes[Change.NEW_FILE] | changes[Change.CHANGED_FOLDER2FILE]
+    logging.info(f"{len(new_files)} files are new.")
+    logging.info(_capped_path_list(new_files, max_lines))
+
+    new_folders = changes[Change.NEW_FOLDER] | changes[Change.CHANGED_FILE2FOLDER]
+    logging.info(f"{len(new_folders)} folders are new.")
+    logging.info(_capped_path_list(new_folders, max_lines))
+
+    removed_files = changes[Change.REMOVED_FILE] | changes[Change.CHANGED_FILE2FOLDER]
+    logging.info(f"{len(removed_files)} files are removed.")
+    logging.info(_capped_path_list(removed_files, max_lines))
+
+    removed_folders = (
+        changes[Change.REMOVED_FOLDER] | changes[Change.CHANGED_FOLDER2FILE]
+    )
+    logging.info(f"{len(removed_folders)} folders are removed.")
+    logging.info(_capped_path_list(removed_folders, max_lines))
 
     logging.info("Do you want to continue? (y/n)")
     if ask:
@@ -317,7 +337,7 @@ def sync_folders(
     target_folder: Path,
     n_threads: int = 1,
     shallow_comparison: bool = True,
-    verbose_logging: bool = False,
+    max_logged_paths: int = -1,
     ask: bool = True,
 ):
     """Syncs two folders. This means the target folder will be made identical to the source folder.
@@ -330,7 +350,7 @@ def sync_folders(
         target_folder (Path): The path to the target folder
         n_threads (int, optional): The number of threads to use for the comparison. Defaults to 1.
         shallow_comparison (bool, optional): Whether to only compare the file sizes and modification times. Defaults to True.
-        verbose_logging (bool, optional): Whether to log the paths of the files with each action. Defaults to False.
+        max_logged_paths (bool, optional): The maximum number of paths to log. If negative, all paths will be logged. Defaults to -1.
         ask (bool, optional): Whether to ask the user for confirmation. Defaults to True.
     """
     logging.basicConfig(level=logging.INFO)
@@ -373,7 +393,7 @@ def sync_folders(
     actions: Dict[Action, Set[Path]] = _infer_actions(changes)
 
     logging.info("The following actions will be applied on the target folder:")
-    _log_actions(actions, changes, verbose_logging, ask)
+    _log_actions(actions, changes, max_logged_paths, ask)
 
     logging.info("Applying changes...")
 
