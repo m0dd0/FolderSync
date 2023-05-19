@@ -48,7 +48,7 @@ def test_sync(source_folders, target_folder, caplog):
 
     logging.basicConfig(level=logging.INFO)
     caplog.set_level(logging.INFO)
-    sync_folders(source_folder, target_folder, ask=False)
+    sync_folders(source_folder, target_folder, quiet=True)
 
     # print("Control Source")
     # seedir.seedir(control_source_folder, style="emoji")

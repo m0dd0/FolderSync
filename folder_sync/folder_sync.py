@@ -108,7 +108,7 @@ def _handle_invlid_types(
     Args:
         source_paths (Set[Path]): The paths in the source folder
         target_paths (Set[Path]): The paths in the target folder
-        ask (bool): Whether to ask the user if he wants to continue if there are invalid paths
+        quiet (bool): If True, the user wont be asked if he wants to continue.
 
     Returns:
         Tuple[Set[Path], Set[Path]]: The invalid paths in the source and target folder
@@ -311,7 +311,8 @@ def _log_actions(
     Args:
         actions (Dict[Change, Set[Path]]): A dictionary mapping the action type to the relative paths of the files with that action
         changes (Dict[Action, Set[Path]]): A dictionary mapping the change type to the relative paths of the files with that change
-        ask (bool): Whether to ask the user for confirmation
+        max_lines (int): The maximum number of lines to print
+        quiet (bool): Whether to skip the confirmation.
     """
     logging.info(
         f"{len(changes[Change.UNCHANGED_FILE])} files are unchanged."
@@ -377,7 +378,7 @@ def sync_folders(
         operations_per_thread (int, optional): The number of operations to perform per thread. Defaults to 10.
         shallow_comparison (bool, optional): Whether to only compare the file sizes and modification times. Defaults to True.
         max_logged_paths (bool, optional): The maximum number of paths to log. If negative, all paths will be logged. Defaults to -1.
-        ask (bool, optional): Whether to ask the user for confirmation. Defaults to True.
+        quiet (bool, optional): Whether to ask the user for confirmation. Defaults to False.
     """
     logging.info(f"Syncing {source_folder} to {target_folder}")
     if not source_folder.exists():
