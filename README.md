@@ -11,6 +11,9 @@ The module contains exactly one public function `sync_folders`. Below is a usage
 A command line interface is also available.
 
 ## Performance
-The tool uses multithreading to speed up the synchronisation.
-Different number of threads and affected files per thread can result in very different speed improvements.
-The benchmark can be run with `pytest ./test_performance.py` in the test folder.  
+The tool uses multithreading to speed up the synchronization.
+Different numbers of threads and file operations per thread can result in very different speed improvements.
+The benchmark can be run with `pytest ./test_performance.py` in the test folder.
+It comes clear that the copying of files is the most time-consuming part if a large amount of data has been changed.
+Therefore we use the optimal parameters for this test case which are also often the best for other operations.
+We use 100 threads and 10 operations per thread as default values.
