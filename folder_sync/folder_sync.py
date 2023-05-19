@@ -280,7 +280,17 @@ def _infer_actions(changes: Dict[Change, Set[Path]]) -> Dict[Action, Set[Path]]:
     return actions
 
 
-def _capped_path_list(paths: Set[Path], max_lines: int):
+def _capped_path_list(paths: Set[Path], max_lines: int) -> str:
+    """Returns a string representation of the paths, capped at max_lines.
+
+    Args:
+        paths (Set[Path]): The paths
+        max_lines (int): The maximum number of lines
+
+    Returns:
+        str: The string representation of the paths
+    """
+    paths = list(paths)
     if max_lines < 0:
         max_lines = len(paths)
     return "\n".join([str(p) for p in paths[:max_lines]]) + (
@@ -301,29 +311,41 @@ def _log_actions(
         changes (Dict[Action, Set[Path]]): A dictionary mapping the change type to the relative paths of the files with that change
         ask (bool): Whether to ask the user for confirmation
     """
-    logging.info(f"{len(changes[Change.UNCHANGED_FILE])} files are unchanged.")
-    logging.info(_capped_path_list(changes[Change.UNCHANGED_FILE], max_lines))
+    logging.info(
+        f"{len(changes[Change.UNCHANGED_FILE])} files are unchanged."
+        + f"\n{_capped_path_list(changes[Change.UNCHANGED_FILE], max_lines)}"
+    )
 
-    logging.info(f"{len(changes[Change.CHANGED_FILE])} files are changed.")
-    logging.info(_capped_path_list(changes[Change.CHANGED_FILE], max_lines))
+    logging.info(
+        f"{len(changes[Change.CHANGED_FILE])} files are changed."
+        + f"\n{_capped_path_list(changes[Change.CHANGED_FILE], max_lines)}"
+    )
 
     new_files = changes[Change.NEW_FILE] | changes[Change.CHANGED_FOLDER2FILE]
-    logging.info(f"{len(new_files)} files are new.")
-    logging.info(_capped_path_list(new_files, max_lines))
+    logging.info(
+        f"{len(new_files)} files are new."
+        + f"\n{_capped_path_list(new_files, max_lines)}"
+    )
 
     new_folders = changes[Change.NEW_FOLDER] | changes[Change.CHANGED_FILE2FOLDER]
-    logging.info(f"{len(new_folders)} folders are new.")
-    logging.info(_capped_path_list(new_folders, max_lines))
+    logging.info(
+        f"{len(new_folders)} folders are new."
+        + f"\n{_capped_path_list(new_folders, max_lines)}"
+    )
 
     removed_files = changes[Change.REMOVED_FILE] | changes[Change.CHANGED_FILE2FOLDER]
-    logging.info(f"{len(removed_files)} files are removed.")
-    logging.info(_capped_path_list(removed_files, max_lines))
+    logging.info(
+        f"{len(removed_files)} files are removed."
+        + f"\n{_capped_path_list(removed_files, max_lines)}"
+    )
 
     removed_folders = (
         changes[Change.REMOVED_FOLDER] | changes[Change.CHANGED_FOLDER2FILE]
     )
-    logging.info(f"{len(removed_folders)} folders are removed.")
-    logging.info(_capped_path_list(removed_folders, max_lines))
+    logging.info(
+        f"{len(removed_folders)} folders are removed."
+        + f"\n{_capped_path_list(removed_folders, max_lines)}"
+    )
 
     logging.info("Do you want to continue? (y/n)")
     if ask:
@@ -353,8 +375,6 @@ def sync_folders(
         max_logged_paths (bool, optional): The maximum number of paths to log. If negative, all paths will be logged. Defaults to -1.
         ask (bool, optional): Whether to ask the user for confirmation. Defaults to True.
     """
-    logging.basicConfig(level=logging.INFO)
-
     logging.info(f"Syncing {source_folder} to {target_folder}")
     if not source_folder.exists():
         logging.error(f"{source_folder} does not exist.")
