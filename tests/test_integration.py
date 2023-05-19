@@ -39,8 +39,8 @@ def assert_identical_folder(folder_a: Path, folder_b: Path):
 
 @pytest.mark.parametrize(
     "source_folders, target_folder",
-    # fixtures.ALL_FOLDER_COMBINATIONS,
-    [("basic", "changed_data")],
+    fixtures.ALL_FOLDER_COMBINATIONS,
+    # [("basic", "changed_data")],
     indirect=["source_folders", "target_folder"],
 )
 def test_sync(source_folders, target_folder, caplog):
@@ -49,10 +49,6 @@ def test_sync(source_folders, target_folder, caplog):
     logging.basicConfig(level=logging.INFO)
     caplog.set_level(logging.INFO)
     sync_folders(source_folder, target_folder, ask=False)
-
-    assert False
-    # assert_identical_folder(source_folder, target_folder)
-    # assert_identical_folder(control_source_folder, source_folder)
 
     # print("Control Source")
     # seedir.seedir(control_source_folder, style="emoji")
