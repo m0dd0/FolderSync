@@ -13,6 +13,12 @@ def cli():
     parser.add_argument("source", help="Source folder", type=Path)
     parser.add_argument("destination", help="Destination folder", type=Path)
     parser.add_argument("--n_threads", help="Number of threads", type=int, default=100)
+    parser.add_argument(
+        "--operations_per_thread",
+        help="Number of operations per thread",
+        type=int,
+        default=10,
+    )
     parser.add_argument("--shallow", help="Shallow compare", action="store_true")
     parser.add_argument("--verbosity", help="Verbosity level", default=20)
     parser.add_argument("--quiet", help="Quiet mode", action="store_true")
@@ -23,7 +29,8 @@ def cli():
         args.source,
         args.destination,
         n_threads=args.n_threads,
-        ask=not args.quiet,
+        operations_per_thread=args.operations_per_thread,
+        quiet=not args.quiet,
         shallow_comparison=args.shallow,
         max_logged_paths=args.verbosity,
     )

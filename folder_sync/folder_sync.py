@@ -99,7 +99,7 @@ def _run_executer_with_progress(
 
 
 def _handle_invlid_types(
-    source_paths: Set[Path], target_paths: Set[Path], ask: bool
+    source_paths: Set[Path], target_paths: Set[Path], quiet: bool
 ) -> Tuple[Set[Path], Set[Path]]:
     """Checks if the paths are valid (i.e. if they are files or directories) and
     asks the user if he wants to continue if there are invalid paths.
@@ -133,7 +133,7 @@ def _handle_invlid_types(
         for p in invalid_target_paths:
             logging.warning(p)
         logging.warning("Do you want to continue?")
-        if ask:
+        if not quiet:
             if input("y/n: ") != "y":
                 logging.info("Aborting...")
                 exit()
@@ -205,6 +205,7 @@ def _determine_change(
 
 def _get_changes(
     n_threads: int,
+    operations_per_thread: int,
     source_folder: Path,
     target_folder: Path,
     shallow_comparison: bool,
@@ -240,6 +241,7 @@ def _get_changes(
             for rel_path in all_paths_rel
         ],
         n_threads,
+        datapoints_per_future=operations_per_thread,
     )
     changes = {c: set() for c in Change}
     for change_type, rel_path in zip(change_results, all_paths_rel):
@@ -302,7 +304,7 @@ def _log_actions(
     actions: Dict[Change, Set[Path]],
     changes: Dict[Action, Set[Path]],
     max_lines: int,
-    ask: bool,
+    quiet: bool,
 ):
     """Logs the actions and changes to be taken and asks the user for confirmation.
 
@@ -348,7 +350,7 @@ def _log_actions(
     )
 
     logging.info("Do you want to continue? (y/n)")
-    if ask:
+    if not quiet:
         if input("y/n: ") != "y":
             logging.info("Aborting...")
             exit()
@@ -357,10 +359,11 @@ def _log_actions(
 def sync_folders(
     source_folder: Path,
     target_folder: Path,
-    n_threads: int = 1,
+    n_threads: int = 100,
+    operations_per_thread: int = 10,
     shallow_comparison: bool = True,
     max_logged_paths: int = -1,
-    ask: bool = True,
+    quiet: bool = False,
 ):
     """Syncs two folders. This means the target folder will be made identical to the source folder.
     Identical files will be untouched, files that are only in the source folder will be copied to the target folder,
@@ -371,6 +374,7 @@ def sync_folders(
         source_folder (Path): The path to the source folder
         target_folder (Path): The path to the target folder
         n_threads (int, optional): The number of threads to use for the comparison. Defaults to 1.
+        operations_per_thread (int, optional): The number of operations to perform per thread. Defaults to 10.
         shallow_comparison (bool, optional): Whether to only compare the file sizes and modification times. Defaults to True.
         max_logged_paths (bool, optional): The maximum number of paths to log. If negative, all paths will be logged. Defaults to -1.
         ask (bool, optional): Whether to ask the user for confirmation. Defaults to True.
@@ -390,7 +394,7 @@ def sync_folders(
 
     logging.info("Checking for invalid types")
     invalid_source_paths, invalid_target_paths = _handle_invlid_types(
-        source_paths, target_paths, ask
+        source_paths, target_paths, quiet
     )
     source_paths = source_paths - invalid_source_paths
     target_paths = target_paths - invalid_target_paths
@@ -413,7 +417,7 @@ def sync_folders(
     actions: Dict[Action, Set[Path]] = _infer_actions(changes)
 
     logging.info("The following actions will be applied on the target folder:")
-    _log_actions(actions, changes, max_logged_paths, ask)
+    _log_actions(actions, changes, max_logged_paths, quiet)
 
     logging.info("Applying changes...")
 
@@ -422,6 +426,7 @@ def sync_folders(
         lambda rel_path: (target_folder / rel_path).unlink(),
         [(p,) for p in actions[Action.DELETE_FILE]],
         n_threads,
+        datapoints_per_future=operations_per_thread,
     )
 
     logging.info("Deleting (now empty) folders...")
@@ -430,6 +435,7 @@ def sync_folders(
         [(p,) for p in actions[Action.DELETE_FOLDER]],
         n_threads,
         order=[-len(p.parts) for p in actions[Action.DELETE_FOLDER]],
+        datapoints_per_future=operations_per_thread,
     )
 
     logging.info("Creating folders...")
@@ -437,6 +443,7 @@ def sync_folders(
         lambda rel_path: (target_folder / rel_path).mkdir(parents=True, exist_ok=True),
         [(a,) for a in actions[Action.CREATE_FOLDER]],
         n_threads,
+        datapoints_per_future=operations_per_thread,
     )
 
     logging.info("Copying files...")
@@ -446,6 +453,7 @@ def sync_folders(
         ),
         [(a,) for a in actions[Action.COPY_FILE]],
         n_threads,
+        datapoints_per_future=operations_per_thread,
     )
 
     logging.info(
