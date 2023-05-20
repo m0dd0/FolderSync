@@ -407,6 +407,7 @@ def sync_folders(
     logging.info("Determining changes...")
     changes: Dict[Change, Set[Path]] = _get_changes(
         n_threads,
+        operations_per_thread,
         source_folder,
         target_folder,
         shallow_comparison,
