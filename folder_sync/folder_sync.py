@@ -6,7 +6,7 @@ import time
 import filecmp
 import enum
 
-from .utils import _run_executer_with_progress
+from .utils import run_executer_with_progress
 
 
 # we can associate exactly one change to each relative path
@@ -159,7 +159,7 @@ def _get_changes(
         Dict[Change, Set[Path]]: A dictionary mapping the change type to the relative paths of the files with that change
     """
     all_paths_rel = list(source_paths_rel | target_paths_rel)
-    change_results = _run_executer_with_progress(
+    change_results = run_executer_with_progress(
         _determine_change,
         [
             (
@@ -356,7 +356,7 @@ def sync_folders(
     logging.info("Applying changes...")
 
     logging.info("Deleting files...")
-    _run_executer_with_progress(
+    run_executer_with_progress(
         lambda rel_path: (target_folder / rel_path).unlink(),
         [(p,) for p in actions[Action.DELETE_FILE]],
         n_threads,
@@ -364,7 +364,7 @@ def sync_folders(
     )
 
     logging.info("Deleting (now empty) folders...")
-    _run_executer_with_progress(
+    run_executer_with_progress(
         lambda rel_path: (target_folder / rel_path).rmdir(),
         [(p,) for p in actions[Action.DELETE_FOLDER]],
         n_threads,
@@ -373,7 +373,7 @@ def sync_folders(
     )
 
     logging.info("Creating folders...")
-    _run_executer_with_progress(
+    run_executer_with_progress(
         lambda rel_path: (target_folder / rel_path).mkdir(parents=True, exist_ok=True),
         [(a,) for a in actions[Action.CREATE_FOLDER]],
         n_threads,
@@ -381,7 +381,7 @@ def sync_folders(
     )
 
     logging.info("Copying files...")
-    _run_executer_with_progress(
+    run_executer_with_progress(
         lambda rel_path: shutil.copy2(
             source_folder / rel_path, target_folder / rel_path
         ),
